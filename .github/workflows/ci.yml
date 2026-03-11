@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "copilot/**"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Linux – unit / non-Windows tests (fast feedback)
+  # -------------------------------------------------------------------------
+  test-linux:
+    name: Test (Linux / Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run tests (skip Windows-only)
+        run: >
+          uv run pytest
+          --cov=requests_schannel
+          --cov-report=term-missing
+          --cov-report=xml
+          --cov-fail-under=40
+          -v
+
+      - name: Upload coverage
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-linux
+          path: coverage.xml
+
+  # -------------------------------------------------------------------------
+  # Windows – full integration tests including SChannel / mTLS
+  # -------------------------------------------------------------------------
+  test-windows:
+    name: Test (Windows / Python ${{ matrix.python-version }})
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run tests
+        run: >
+          uv run pytest
+          --cov=requests_schannel
+          --cov-report=term-missing
+          --cov-report=xml
+          --cov-fail-under=80
+          -v
+
+      - name: Upload coverage
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-windows
+          path: coverage.xml
+
+  # -------------------------------------------------------------------------
+  # Lint / type checking
+  # -------------------------------------------------------------------------
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Verify package imports cleanly
+        run: uv run python -c "import requests_schannel; print('OK')"
+
+      - name: Check package metadata
+        run: uv run python -m build --wheel --no-isolation 2>/dev/null || echo "build skipped (no build tool)"

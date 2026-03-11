@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "requests-schannel"
+version = "0.1.0"
+description = "A requests transport adapter that uses Windows SChannel for TLS, including smart card client certificate authentication"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+keywords = ["requests", "schannel", "tls", "ssl", "windows", "smartcard", "pki"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Security :: Cryptography",
+]
+dependencies = [
+    "requests>=2.31.0",
+    "urllib3>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    "cryptography>=42.0.0",
+    "trustme>=1.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/ruckc/requests-schannel"
+Repository = "https://github.com/ruckc/requests-schannel"
+Issues = "https://github.com/ruckc/requests-schannel/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/requests_schannel"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=requests_schannel --cov-report=term-missing --cov-fail-under=80"
+
+[tool.coverage.run]
+source = ["requests_schannel"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if sys.platform",
+    "if TYPE_CHECKING",
+    "raise NotImplementedError",
+]
