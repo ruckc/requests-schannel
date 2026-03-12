@@ -223,8 +223,10 @@ def windows_client_cert_thumbprint(client_cert_and_key, ca_cert_and_key):
     client_cert, client_key = client_cert_and_key
     ca_cert, _ = ca_cert_and_key
 
-    # Build PKCS#12 blob for import (one-time setup; not an export)
-    pfx_bytes = make_pfx(client_cert, client_key, ca_cert)
+    # Build PKCS#12 blob for import (one-time setup; not an export).
+    # Only include the client cert + key (no CA cert), so that
+    # CERT_FIND_ANY returns the client cert, not the CA cert.
+    pfx_bytes = make_pfx(client_cert, client_key)
 
     blob_data = (ctypes.c_ubyte * len(pfx_bytes))(*pfx_bytes)
     blob = CRYPTOAPI_BLOB()

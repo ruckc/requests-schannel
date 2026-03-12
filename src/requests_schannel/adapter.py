@@ -223,9 +223,10 @@ class _SchannelPoolManager(urllib3.PoolManager):
     ) -> urllib3.connectionpool.HTTPConnectionPool:
         if scheme == "https":
             ctx = dict(request_context or {})
-            # Remove OpenSSL-specific keys so urllib3 doesn't complain
+            # Remove OpenSSL-specific keys so urllib3 doesn't complain,
+            # and remove host/port since they are passed as positional args.
             for key in ("ssl_context", "ssl_version", "assert_hostname",
-                        "assert_fingerprint", "cert_reqs"):
+                        "assert_fingerprint", "cert_reqs", "host", "port"):
                 ctx.pop(key, None)
             return _SchannelHTTPSConnectionPool(
                 host,

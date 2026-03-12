@@ -308,6 +308,14 @@ def _load_secur32() -> ctypes.WinDLL:  # type: ignore[name-defined]
 def _load_crypt32() -> ctypes.WinDLL:  # type: ignore[name-defined]
     lib = ctypes.WinDLL("crypt32", use_last_error=True)  # type: ignore[attr-defined]
 
+    # CertCreateCertificateContext
+    lib.CertCreateCertificateContext.restype = ctypes.c_void_p  # PCCERT_CONTEXT
+    lib.CertCreateCertificateContext.argtypes = [
+        wintypes.DWORD,    # dwCertEncodingType
+        ctypes.c_void_p,   # pbCertEncoded
+        wintypes.DWORD,    # cbCertEncoded
+    ]
+
     # CertOpenStore
     lib.CertOpenStore.restype = wintypes.HANDLE
     lib.CertOpenStore.argtypes = [
