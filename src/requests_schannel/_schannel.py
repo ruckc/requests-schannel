@@ -50,6 +50,7 @@ if sys.platform == "win32":  # pragma: no cover
         SECPKG_ATTR_STREAM_SIZES,
         SECPKG_ATTR_REMOTE_CERT_CONTEXT,
         SECPKG_CRED_OUTBOUND,
+        ISC_REQ_ALLOCATE_MEMORY,
         ISC_REQ_CONFIDENTIALITY,
         ISC_REQ_EXTENDED_ERROR,
         ISC_REQ_MANUAL_CRED_VALIDATION,
@@ -230,6 +231,7 @@ class SchannelSocket:
             | ISC_REQ_REPLAY_DETECT
             | ISC_REQ_CONFIDENTIALITY
             | ISC_REQ_EXTENDED_ERROR
+            | ISC_REQ_ALLOCATE_MEMORY
             | ISC_REQ_STREAM
             # Required to activate SCH_CRED_MANUAL_CRED_VALIDATION set in the
             # credential (see _acquire_credentials).  Without this flag SChannel
