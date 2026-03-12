@@ -530,10 +530,10 @@ class SchannelSocket:
     def recv(self, size: int) -> bytes:  # pragma: no cover
         """Return up to *size* bytes of decrypted application data."""
         while not self._plaintext_buf:
-            prev_len = len(self._recv_buf) + len(self._plaintext_buf)
+            prev_recv_len = len(self._recv_buf)
             self._decrypt_one_record()
             # If we made no progress (EOF on underlying socket), stop.
-            if not self._plaintext_buf and len(self._recv_buf) == prev_len:
+            if not self._plaintext_buf and len(self._recv_buf) == prev_recv_len:
                 return b""
         result = self._plaintext_buf[:size]
         self._plaintext_buf = self._plaintext_buf[size:]
@@ -642,8 +642,8 @@ class _SchannelFile:  # pragma: no cover
         self._closed = False
         self._peek_buf: bytes = b""
 
-    def read(self, size: int = -1) -> bytes:
-        if size < 0 or size is None:
+    def read(self, size: Optional[int] = -1) -> bytes:
+        if size is None or size < 0:
             chunks = []
             if self._peek_buf:
                 chunks.append(self._peek_buf)
