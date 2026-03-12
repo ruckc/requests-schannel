@@ -28,9 +28,9 @@ import socket
 import sys
 from typing import Optional
 
-logger = logging.getLogger(__name__)
-
 from .exceptions import SchannelCertValidationError, SchannelError, SchannelHandshakeError
+
+logger = logging.getLogger(__name__)
 
 if sys.platform == "win32":  # pragma: no cover
     import ctypes.wintypes as wintypes
@@ -599,7 +599,7 @@ class SchannelSocket:
                     # TLS 1.3 post-handshake message (NewSessionTicket or
                     # KeyUpdate).  SChannel has already processed it
                     # internally.  Save any EXTRA data and loop back to
-                    # call DecryptMessage again — no InitializeSecurityContext
+                    # call DecryptMessage again -- no InitializeSecurityContext
                     # call is needed for TLS 1.3.
                     logger.debug("DecryptMessage: SEC_I_RENEGOTIATE (TLS 1.3 post-handshake)")
                     extra = b""
@@ -609,7 +609,7 @@ class SchannelSocket:
                                 dec_bufs[i].pvBuffer, dec_bufs[i].cbBuffer
                             )
                     self._recv_buf = extra
-                    # Continue the while loop — do NOT return to caller.
+                    # Continue the while loop -- do NOT return to caller.
                     # If extra is non-empty, we'll try DecryptMessage again
                     # immediately.  If empty, we'll fall through to read
                     # more data from the socket.
