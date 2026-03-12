@@ -14,6 +14,11 @@ class SchannelError(OSError):
             return f"{msg} (0x{self.error_code:08X})"
         return msg
 
+    def __repr__(self) -> str:
+        if self.error_code:
+            return f"{type(self).__name__}({super().__str__()!r}, error_code=0x{self.error_code:08X})"
+        return f"{type(self).__name__}({super().__str__()!r})"
+
 
 class SchannelHandshakeError(SchannelError):
     """Raised when the TLS handshake fails."""

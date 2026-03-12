@@ -192,7 +192,7 @@ class SchannelSocket:
         scred.dwFlags = SCH_CRED_MANUAL_CRED_VALIDATION | SCH_CRED_NO_DEFAULT_CREDS
 
         ts = TimeStamp()
-        status = _secur32.AcquireCredentialsHandleW(
+        status = int(_secur32.AcquireCredentialsHandleW(
             None,
             UNISP_NAME,
             SECPKG_CRED_OUTBOUND,
@@ -202,7 +202,7 @@ class SchannelSocket:
             None,
             ctypes.byref(self._cred),
             ctypes.byref(ts),
-        )
+        ))
         if status != SEC_E_OK:
             raise SchannelError("AcquireCredentialsHandle failed", status)
 
@@ -264,7 +264,7 @@ class SchannelSocket:
             ctx_attrs = wintypes.ULONG(0)
             ts = TimeStamp()
 
-            status = _secur32.InitializeSecurityContextW(
+            status = int(_secur32.InitializeSecurityContextW(
                 ctypes.byref(self._cred),
                 None if first_call else ctypes.byref(self._ctx),
                 self._server_name,
@@ -277,7 +277,7 @@ class SchannelSocket:
                 ctypes.byref(out_desc),
                 ctypes.byref(ctx_attrs),
                 ctypes.byref(ts),
-            )
+            ))
             first_call = False
 
             # Send any output tokens produced by SChannel
@@ -328,11 +328,11 @@ class SchannelSocket:
 
     def _query_stream_sizes(self) -> None:  # pragma: no cover
         sizes = SecPkgContext_StreamSizes()
-        status = _secur32.QueryContextAttributesW(
+        status = int(_secur32.QueryContextAttributesW(
             ctypes.byref(self._ctx),
             SECPKG_ATTR_STREAM_SIZES,
             ctypes.byref(sizes),
-        )
+        ))
         if status != SEC_E_OK:
             raise SchannelError("QueryContextAttributes(STREAM_SIZES) failed", status)
         self._stream_sizes = sizes
@@ -361,11 +361,11 @@ class SchannelSocket:
         """
         # Step 1 – Retrieve the server's PCCERT_CONTEXT from the SChannel context.
         remote_cert = ctypes.c_void_p(0)
-        status = _secur32.QueryContextAttributesW(
+        status = int(_secur32.QueryContextAttributesW(
             ctypes.byref(self._ctx),
             SECPKG_ATTR_REMOTE_CERT_CONTEXT,
             ctypes.byref(remote_cert),
-        )
+        ))
         if status != SEC_E_OK or not remote_cert.value:
             raise SchannelCertValidationError(
                 "QueryContextAttributes(REMOTE_CERT_CONTEXT) failed", status
@@ -505,9 +505,9 @@ class SchannelSocket:
         enc_bufs[3].pvBuffer = None
 
         enc_desc = _make_sec_buffer_desc(enc_bufs)
-        status = _secur32.EncryptMessage(
+        status = int(_secur32.EncryptMessage(
             ctypes.byref(self._ctx), 0, ctypes.byref(enc_desc), 0
-        )
+        ))
         if status != SEC_E_OK:
             raise SchannelError("EncryptMessage failed", status)
 
@@ -543,9 +543,9 @@ class SchannelSocket:
                     dec_bufs[i].pvBuffer = None
                 dec_desc = _make_sec_buffer_desc(dec_bufs)
                 qop = wintypes.ULONG(0)
-                status = _secur32.DecryptMessage(
+                status = int(_secur32.DecryptMessage(
                     ctypes.byref(self._ctx), ctypes.byref(dec_desc), 0, ctypes.byref(qop)
-                )
+                ))
                 if status == SEC_E_OK:
                     # Collect plaintext from DATA buffer(s)
                     for i in range(4):

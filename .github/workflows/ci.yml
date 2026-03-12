@@ -13,6 +13,7 @@ jobs:
   test-windows:
     name: Test (Windows / Python ${{ matrix.python-version }})
     runs-on: windows-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     strategy:

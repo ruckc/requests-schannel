@@ -65,9 +65,18 @@ class TestExceptions:
         assert "0x80090308" in str(err)
         assert "handshake failed" in str(err)
 
+    def test_schannel_error_repr_with_code(self):
+        err = SchannelError("handshake failed", error_code=0x80090308)
+        assert "0x80090308" in repr(err)
+        assert "handshake failed" in repr(err)
+
     def test_schannel_error_str_without_code(self):
         err = SchannelError("something went wrong")
         assert "something went wrong" in str(err)
+
+    def test_schannel_error_repr_without_code(self):
+        err = SchannelError("something went wrong")
+        assert "something went wrong" in repr(err)
 
     def test_cert_store_error_str_with_code(self):
         err = CertStoreError("store open failed", error_code=5)
