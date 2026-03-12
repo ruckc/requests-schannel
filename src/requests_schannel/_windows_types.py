@@ -16,7 +16,7 @@ import ctypes.wintypes as wintypes
 
 ULONG = ctypes.c_ulong
 ULONG_PTR = ctypes.c_size_t  # pointer-sized unsigned int (32 or 64 bit)
-SECURITY_STATUS = ctypes.c_long  # signed 32-bit HRESULT-style
+SECURITY_STATUS = ctypes.c_ulong  # 32-bit; unsigned so int() matches hex constants
 
 
 # ---------------------------------------------------------------------------
