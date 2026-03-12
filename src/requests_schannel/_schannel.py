@@ -33,8 +33,8 @@ if sys.platform == "win32":  # pragma: no cover
     import ctypes.wintypes as wintypes
 
     from ._windows_types import (
-        SCHANNEL_CRED,
-        SCHANNEL_CRED_VERSION,
+        SCH_CREDENTIALS,
+        SCH_CREDENTIALS_VERSION,
         SEC_E_INCOMPLETE_MESSAGE,
         SEC_E_OK,
         SEC_I_CONTINUE_NEEDED,
@@ -50,8 +50,6 @@ if sys.platform == "win32":  # pragma: no cover
         SECPKG_ATTR_STREAM_SIZES,
         SECPKG_ATTR_REMOTE_CERT_CONTEXT,
         SECPKG_CRED_OUTBOUND,
-        SP_PROT_TLS1_2_CLIENT,
-        SP_PROT_TLS1_3_CLIENT,
         ISC_REQ_CONFIDENTIALITY,
         ISC_REQ_EXTENDED_ERROR,
         ISC_REQ_MANUAL_CRED_VALIDATION,
@@ -167,12 +165,14 @@ class SchannelSocket:
     # ------------------------------------------------------------------
 
     def _acquire_credentials(self) -> None:  # pragma: no cover
-        """Call ``AcquireCredentialsHandle`` to initialise the credential."""
-        scred = SCHANNEL_CRED()
-        scred.dwVersion = SCHANNEL_CRED_VERSION
-        scred.grbitEnabledProtocols = SP_PROT_TLS1_2_CLIENT | SP_PROT_TLS1_3_CLIENT
-        scred.dwMinimumCipherStrength = 0
-        scred.dwMaximumCipherStrength = 0
+        """Call ``AcquireCredentialsHandle`` to initialise the credential.
+
+        Uses the ``SCH_CREDENTIALS`` structure (version 5) which supports
+        TLS 1.3.  The older ``SCHANNEL_CRED`` (version 4) returns
+        ``SEC_E_UNKNOWN_CREDENTIALS`` when TLS 1.3 is requested.
+        """
+        scred = SCH_CREDENTIALS()
+        scred.dwVersion = SCH_CREDENTIALS_VERSION
         scred.dwSessionLifespan = 0
 
         if self._cert_context_handle:
@@ -191,6 +191,9 @@ class SchannelSocket:
         # we perform equivalent chain validation ourselves in _verify_server_cert()
         # using offline-only CertGetCertificateChain flags.
         scred.dwFlags = SCH_CRED_MANUAL_CRED_VALIDATION | SCH_CRED_NO_DEFAULT_CREDS
+
+        # Leave cTlsParameters=0 / pTlsParameters=NULL to let SChannel
+        # negotiate the best available protocol (TLS 1.2 or 1.3).
 
         ts = TimeStamp()
         status = int(_secur32.AcquireCredentialsHandleW(

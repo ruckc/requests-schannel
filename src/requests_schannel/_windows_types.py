@@ -79,6 +79,7 @@ SECPKG_CRED_OUTBOUND: int = 0x00000002
 
 UNISP_NAME: str = "Microsoft Unified Security Protocol Provider"
 SCHANNEL_CRED_VERSION: int = 4
+SCH_CREDENTIALS_VERSION: int = 5
 
 # grbitEnabledProtocols – allow TLS 1.2 and TLS 1.3 only
 SP_PROT_TLS1_2_CLIENT: int = 0x00000200
@@ -199,7 +200,11 @@ class SecBufferDesc(ctypes.Structure):
 
 
 class SCHANNEL_CRED(ctypes.Structure):
-    """Maps to the Windows SCHANNEL_CRED structure (dwVersion == 4)."""
+    """Maps to the Windows SCHANNEL_CRED structure (dwVersion == 4).
+
+    .. deprecated:: Windows 10/Server 2022
+       Use :class:`SCH_CREDENTIALS` (version 5) for TLS 1.3 support.
+    """
 
     _fields_ = [
         ("dwVersion", wintypes.DWORD),
@@ -217,6 +222,31 @@ class SCHANNEL_CRED(ctypes.Structure):
         ("dwSessionLifespan", wintypes.DWORD),
         ("dwFlags", wintypes.DWORD),
         ("dwCredFormat", wintypes.DWORD),
+    ]
+
+
+class SCH_CREDENTIALS(ctypes.Structure):
+    """
+    Maps to the Windows SCH_CREDENTIALS structure (dwVersion == 5).
+
+    This replaces the deprecated ``SCHANNEL_CRED`` and is required for
+    TLS 1.3 support.  ``AcquireCredentialsHandleW`` returns
+    ``SEC_E_UNKNOWN_CREDENTIALS`` when ``SP_PROT_TLS1_3_CLIENT`` is
+    used with the older ``SCHANNEL_CRED`` (version 4).
+    """
+
+    _fields_ = [
+        ("dwVersion", wintypes.DWORD),
+        ("dwCredFormat", wintypes.DWORD),
+        ("cCreds", wintypes.DWORD),
+        ("paCred", ctypes.POINTER(ctypes.c_void_p)),
+        ("hRootStore", ctypes.c_void_p),
+        ("cMappers", wintypes.DWORD),
+        ("aphMappers", ctypes.c_void_p),
+        ("dwSessionLifespan", wintypes.DWORD),
+        ("dwFlags", wintypes.DWORD),
+        ("cTlsParameters", wintypes.DWORD),
+        ("pTlsParameters", ctypes.c_void_p),
     ]
 
 
