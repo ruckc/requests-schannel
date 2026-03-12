@@ -217,6 +217,14 @@ class SchannelSocket:
             | ISC_REQ_EXTENDED_ERROR
             | ISC_REQ_STREAM
         )
+        # Per MSDN: SCH_CRED_MANUAL_CRED_VALIDATION in the credential is
+        # only honoured when ISC_REQ_MANUAL_CRED_VALIDATION is *also* set in
+        # the ISC request flags.  Without this flag SChannel performs
+        # automatic server certificate validation even when verify=False,
+        # which may block indefinitely on CI while Windows tries to download
+        # root CA updates from ctldl.windowsupdate.com.
+        if not self._verify:
+            isc_flags |= ISC_REQ_MANUAL_CRED_VALIDATION
 
         while True:
             # --- Output buffers -----------------------------------------
@@ -337,6 +345,12 @@ class SchannelSocket:
             chunk = data[total_sent : total_sent + sizes.cbMaximumMessage]
             total_sent += self._send_chunk(chunk)
         return total_sent
+
+    def sendall(self, data: bytes) -> None:  # pragma: no cover
+        """Send all *data*, encrypting with SChannel.  Mirrors socket.sendall()."""
+        sent = 0
+        while sent < len(data):
+            sent += self.send(data[sent:])
 
     def _send_chunk(self, chunk: bytes) -> int:  # pragma: no cover
         sizes = self._stream_sizes

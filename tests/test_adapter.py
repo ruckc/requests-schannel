@@ -264,7 +264,7 @@ class TestSchannelAdapterWindowsIntegration:
             adapter = SchannelAdapter(verify=True)
             session = requests.Session()
             session.mount("https://", adapter)
-            resp = session.get(f"https://localhost:{tls_server.port}/")
+            resp = session.get(f"https://localhost:{tls_server.port}/", timeout=30)
             assert resp.status_code == 200
         finally:
             if ca_ctx:
@@ -277,7 +277,7 @@ class TestSchannelAdapterWindowsIntegration:
         adapter = SchannelAdapter(verify=False)
         session = requests.Session()
         session.mount("https://", adapter)
-        resp = session.get(f"https://localhost:{tls_server.port}/")
+        resp = session.get(f"https://localhost:{tls_server.port}/", timeout=30)
         assert resp.status_code == 200
 
     def test_mtls_with_client_cert_from_store(
@@ -329,7 +329,7 @@ class TestSchannelAdapterWindowsIntegration:
             )
             session = requests.Session()
             session.mount("https://", adapter)
-            resp = session.get(f"https://localhost:{mtls_server.port}/")
+            resp = session.get(f"https://localhost:{mtls_server.port}/", timeout=30)
             assert resp.status_code == 200
         finally:
             if ca_ctx:

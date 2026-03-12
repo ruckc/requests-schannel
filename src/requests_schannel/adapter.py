@@ -127,7 +127,16 @@ class _SchannelHTTPSConnection(urllib3.connection.HTTPSConnection):
 
         # Create the raw TCP socket (respects proxy / source address settings)
         raw = self._new_conn()
-        raw.settimeout(self.timeout)
+        # self.timeout may be a urllib3 Timeout object rather than a plain float;
+        # extract a numeric value or fall back to None (blocking).
+        _sock_timeout: Optional[float] = None
+        if isinstance(self.timeout, (int, float)):
+            _sock_timeout = float(self.timeout)
+        elif hasattr(self.timeout, "read_timeout"):
+            rt = self.timeout.read_timeout  # type: ignore[union-attr]
+            if isinstance(rt, (int, float)):
+                _sock_timeout = float(rt)
+        raw.settimeout(_sock_timeout)
 
         # Determine client cert handle (if any)
         cert_handle: Optional[int] = None
@@ -140,7 +149,7 @@ class _SchannelHTTPSConnection(urllib3.connection.HTTPSConnection):
             cert_context_handle=cert_handle,
             verify=self._schannel_verify,
             ca_store_handle=self._ca_store_handle,
-            timeout=self.timeout if isinstance(self.timeout, (int, float)) else None,
+            timeout=_sock_timeout,
         )
         self.is_verified = self._schannel_verify
 

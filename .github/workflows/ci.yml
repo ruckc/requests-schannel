@@ -77,5 +77,4 @@ jobs:
         run: uv run python -c "import requests_schannel; print('OK')"
 
       - name: Check package metadata
-        run: uv run python -m build --wheel --no-isolation 2>$null; if ($LASTEXITCODE -ne 0) { echo "build skipped (no build tool)" }
-        shell: pwsh
+        run: uv build --wheel
