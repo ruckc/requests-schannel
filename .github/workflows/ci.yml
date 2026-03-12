@@ -22,7 +22,7 @@ jobs:
         python-version: ["3.12", "3.13", "3.14"]
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -44,6 +44,7 @@ jobs:
           --cov-fail-under=80
           -v
           --tb=short
+          --log-cli-level=DEBUG
 
       - name: Upload coverage
         if: matrix.python-version == '3.12'
@@ -62,7 +63,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7

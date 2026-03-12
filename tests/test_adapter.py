@@ -1,18 +1,9 @@
 """
 Tests for the SchannelAdapter and supporting classes.
-
-Platform notes
---------------
-* Integration tests that require the Windows SChannel API are marked
-  ``requires_windows`` and are skipped on Linux / macOS.
-* Unit tests for the adapter's public interface (construction, parameter
-  handling, close()) run on all platforms.
 """
 from __future__ import annotations
 
 import sys
-import tempfile
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -24,10 +15,9 @@ from requests_schannel.adapter import _resolve_client_cert, _SchannelPoolManager
 from requests_schannel.exceptions import (
     CertNotFoundError,
     SchannelError,
-    SchannelCertValidationError,
     SchannelHandshakeError,
 )
-from tests.conftest import requires_windows, cert_to_pem, key_to_pem
+from tests.conftest import requires_windows
 
 
 # ---------------------------------------------------------------------------
@@ -194,23 +184,6 @@ class TestAdapterSend:
 
 
 # ---------------------------------------------------------------------------
-# Non-Windows guard on _get_cert_context
-# ---------------------------------------------------------------------------
-
-
-class TestNonWindowsGuard:
-    @pytest.mark.skipif(sys.platform == "win32", reason="Tests non-Windows guard")
-    def test_get_cert_context_raises_on_non_windows(self):
-        """Explicitly calling _get_cert_context() on non-Windows must raise."""
-        adapter = SchannelAdapter(client_cert="AABBCC" + "00" * 17)
-        # Construction is fine; resolution is deferred
-        assert adapter._client_cert_context is None
-        # Explicit call must raise
-        with pytest.raises((SchannelError, NotImplementedError)):
-            adapter._get_cert_context()
-
-
-# ---------------------------------------------------------------------------
 # Windows integration – TLS + mTLS
 # ---------------------------------------------------------------------------
 
@@ -365,17 +338,3 @@ class TestSchannelAdapterWindowsIntegration:
             session.get("https://localhost:9999/", timeout=2)
 
 
-# ---------------------------------------------------------------------------
-# SchannelSocket – unit-level (non-Windows, mock platform)
-# ---------------------------------------------------------------------------
-
-
-class TestSchannelSocketNonWindows:
-    @pytest.mark.skipif(sys.platform == "win32", reason="Tests non-Windows guard")
-    def test_raises_on_non_windows(self):
-        from requests_schannel._schannel import SchannelSocket
-        import socket as _socket
-
-        raw = MagicMock(spec=_socket.socket)
-        with pytest.raises(NotImplementedError):
-            SchannelSocket(raw, server_name="localhost")

@@ -23,9 +23,12 @@ Handshake flow (SSPI / SChannel client side)
 from __future__ import annotations
 
 import ctypes
+import logging
 import socket
 import sys
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from .exceptions import SchannelCertValidationError, SchannelError, SchannelHandshakeError
 
@@ -141,6 +144,9 @@ class SchannelSocket:
         if sys.platform != "win32":  # pragma: no cover
             raise NotImplementedError("SchannelSocket is only available on Windows")
 
+        logger.debug("SchannelSocket: connecting to %s (verify=%s, cert=%s, ca_store=%s)",
+                     server_name, verify, cert_context_handle is not None,
+                     ca_store_handle is not None)
         self._sock = raw_sock
         self._server_name = server_name
         self._cert_context_handle = cert_context_handle
@@ -210,7 +216,10 @@ class SchannelSocket:
             ctypes.byref(ts),
         ))
         if status != SEC_E_OK:
+            logger.error("AcquireCredentialsHandle failed: 0x%08X", status)
             raise SchannelError("AcquireCredentialsHandle failed", status)
+        logger.debug("AcquireCredentialsHandle succeeded (cert=%s)",
+                     "yes" if self._cert_context_handle else "no")
 
     # ------------------------------------------------------------------
     # TLS handshake
@@ -304,9 +313,11 @@ class SchannelSocket:
                 # Handshake complete; stash any application data that arrived
                 # in the EXTRA buffer
                 self._recv_buf = extra
+                logger.debug("TLS handshake complete (extra=%d bytes)", len(extra))
                 break
             elif status == SEC_I_CONTINUE_NEEDED:
                 # Need server tokens; read from the socket
+                logger.debug("ISC: SEC_I_CONTINUE_NEEDED")
                 chunk = self._sock.recv(_RECV_CHUNK)
                 if not chunk:
                     raise SchannelHandshakeError(
@@ -315,6 +326,7 @@ class SchannelSocket:
                 in_data = extra + chunk
             elif status == SEC_E_INCOMPLETE_MESSAGE:
                 # Need more data to complete the current handshake record
+                logger.debug("ISC: SEC_E_INCOMPLETE_MESSAGE")
                 chunk = self._sock.recv(_RECV_CHUNK)
                 if not chunk:
                     raise SchannelHandshakeError(
@@ -328,108 +340,11 @@ class SchannelSocket:
                     status,
                 )
             else:
+                logger.error("ISC failed: 0x%08X", status)
                 _validate_handshake_status(status)
 
         self._query_stream_sizes()
         self._handshake_done = True
-
-    def _handle_renegotiate(self, extra_data: bytes) -> None:  # pragma: no cover
-        """
-        Handle ``SEC_I_RENEGOTIATE`` from ``DecryptMessage``.
-
-        In TLS 1.3, SChannel uses this status code for key-update and
-        new-session-ticket messages.  The handler calls
-        ``InitializeSecurityContext`` with any leftover (EXTRA) data from
-        the ``DecryptMessage`` output, exchanges tokens as necessary, and
-        returns once the renegotiation / key update is complete.
-        """
-        in_data: bytes = extra_data
-
-        isc_flags = (
-            ISC_REQ_SEQUENCE_DETECT
-            | ISC_REQ_REPLAY_DETECT
-            | ISC_REQ_CONFIDENTIALITY
-            | ISC_REQ_EXTENDED_ERROR
-            | ISC_REQ_ALLOCATE_MEMORY
-            | ISC_REQ_STREAM
-            | ISC_REQ_MANUAL_CRED_VALIDATION
-        )
-
-        while True:
-            # --- Output buffers -----------------------------------------
-            out_bufs = _make_sec_buffer_array(2)
-            out_bufs[0].cbBuffer = 0
-            out_bufs[0].BufferType = SECBUFFER_TOKEN
-            out_bufs[0].pvBuffer = None
-            out_bufs[1].cbBuffer = 0
-            out_bufs[1].BufferType = SECBUFFER_ALERT
-            out_bufs[1].pvBuffer = None
-            out_desc = _make_sec_buffer_desc(out_bufs)
-
-            # --- Input buffers ------------------------------------------
-            if in_data:
-                in_raw = ctypes.create_string_buffer(in_data)
-                in_bufs = _make_sec_buffer_array(2)
-                in_bufs[0].cbBuffer = len(in_data)
-                in_bufs[0].BufferType = SECBUFFER_TOKEN
-                in_bufs[0].pvBuffer = ctypes.cast(in_raw, ctypes.c_void_p)
-                in_bufs[1].cbBuffer = 0
-                in_bufs[1].BufferType = SECBUFFER_EMPTY
-                in_bufs[1].pvBuffer = None
-                in_desc = _make_sec_buffer_desc(in_bufs)
-                p_in_desc = ctypes.byref(in_desc)
-            else:
-                in_bufs = None
-                p_in_desc = None
-
-            ctx_attrs = wintypes.ULONG(0)
-            ts = TimeStamp()
-
-            status = int(_secur32.InitializeSecurityContextW(
-                ctypes.byref(self._cred),
-                ctypes.byref(self._ctx),  # existing context
-                self._server_name,
-                isc_flags,
-                0,
-                SECURITY_NATIVE_DREP,
-                p_in_desc,
-                0,
-                ctypes.byref(self._ctx),
-                ctypes.byref(out_desc),
-                ctypes.byref(ctx_attrs),
-                ctypes.byref(ts),
-            ))
-
-            # Send any output tokens produced by SChannel
-            if out_bufs[0].cbBuffer > 0 and out_bufs[0].pvBuffer:
-                token = ctypes.string_at(out_bufs[0].pvBuffer, out_bufs[0].cbBuffer)
-                _secur32.FreeContextBuffer(out_bufs[0].pvBuffer)
-                out_bufs[0].pvBuffer = None
-                self._sock.sendall(token)
-
-            # Handle extra data
-            if in_bufs is not None and in_bufs[1].BufferType == SECBUFFER_EXTRA and in_bufs[1].cbBuffer > 0:
-                extra = in_data[len(in_data) - in_bufs[1].cbBuffer:]
-            else:
-                extra = b""
-
-            if status == SEC_E_OK:
-                self._recv_buf = extra
-                return
-            elif status == SEC_I_CONTINUE_NEEDED:
-                chunk = self._sock.recv(_RECV_CHUNK)
-                if not chunk:
-                    raise SchannelError("Connection closed during renegotiation")
-                in_data = extra + chunk
-            elif status == SEC_E_INCOMPLETE_MESSAGE:
-                chunk = self._sock.recv(_RECV_CHUNK)
-                if not chunk:
-                    raise SchannelError(
-                        "Connection closed during renegotiation (incomplete message)"
-                    )
-                in_data = in_data + chunk
-            else:
-                raise SchannelError("Renegotiation failed", status)
 
     def _query_stream_sizes(self) -> None:  # pragma: no cover
         sizes = SecPkgContext_StreamSizes()
@@ -464,6 +379,8 @@ class SchannelSocket:
         ``HCERTSTORE`` without modifying any system store (which would trigger
         Windows's CTL auto-update and hang in restricted network environments).
         """
+        logger.debug("Verifying server cert for %r (ca_store=%s)",
+                     self._server_name, self._ca_store_handle is not None)
         # Step 1 – Retrieve the server's PCCERT_CONTEXT from the SChannel context.
         remote_cert = ctypes.c_void_p(0)
         status = int(_secur32.QueryContextAttributesW(
@@ -581,6 +498,7 @@ class SchannelSocket:
         while total_sent < len(data):
             chunk = data[total_sent : total_sent + sizes.cbMaximumMessage]
             total_sent += self._send_chunk(chunk)
+        logger.debug("send: %d bytes encrypted and sent", total_sent)
         return total_sent
 
     def sendall(self, data: bytes) -> None:  # pragma: no cover
@@ -617,6 +535,7 @@ class SchannelSocket:
             ctypes.byref(self._ctx), 0, ctypes.byref(enc_desc), 0
         ))
         if status != SEC_E_OK:
+            logger.error("EncryptMessage failed: 0x%08X", status)
             raise SchannelError("EncryptMessage failed", status)
 
         # The three buffers are now contiguous encrypted data; send them
@@ -658,6 +577,7 @@ class SchannelSocket:
                 status = int(_secur32.DecryptMessage(
                     ctypes.byref(self._ctx), ctypes.byref(dec_desc), 0, ctypes.byref(qop)
                 ))
+                logger.debug("DecryptMessage: 0x%08X (buf=%d bytes)", status, len(self._recv_buf))
                 if status == SEC_E_OK:
                     # Collect plaintext from DATA buffer(s)
                     for i in range(4):
@@ -676,18 +596,26 @@ class SchannelSocket:
                 elif status == SEC_E_INCOMPLETE_MESSAGE:
                     pass  # fall through to read more data
                 elif status == SEC_I_RENEGOTIATE:
-                    # TLS 1.3 key update or new-session-ticket.
-                    # Extract EXTRA data and perform the renegotiation handshake.
+                    # TLS 1.3 post-handshake message (NewSessionTicket or
+                    # KeyUpdate).  SChannel has already processed it
+                    # internally.  Save any EXTRA data and loop back to
+                    # call DecryptMessage again — no InitializeSecurityContext
+                    # call is needed for TLS 1.3.
+                    logger.debug("DecryptMessage: SEC_I_RENEGOTIATE (TLS 1.3 post-handshake)")
                     extra = b""
                     for i in range(4):
                         if dec_bufs[i].BufferType == SECBUFFER_EXTRA and dec_bufs[i].cbBuffer:
                             extra = ctypes.string_at(
                                 dec_bufs[i].pvBuffer, dec_bufs[i].cbBuffer
                             )
-                    self._recv_buf = b""
-                    self._handle_renegotiate(extra)
-                    return  # caller will retry decrypt
+                    self._recv_buf = extra
+                    # Continue the while loop — do NOT return to caller.
+                    # If extra is non-empty, we'll try DecryptMessage again
+                    # immediately.  If empty, we'll fall through to read
+                    # more data from the socket.
+                    continue
                 else:
+                    logger.error("DecryptMessage failed: 0x%08X", status)
                     raise SchannelError("DecryptMessage failed", status)
 
             chunk = self._sock.recv(_RECV_CHUNK)

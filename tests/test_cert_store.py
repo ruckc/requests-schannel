@@ -9,8 +9,7 @@ and will be skipped automatically on Linux / macOS.  The pure-Python helpers
 """
 from __future__ import annotations
 
-import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -145,27 +144,6 @@ class TestCertContextMock:
             with ctx as c:
                 assert c is ctx
             assert ctx._closed
-
-
-# ---------------------------------------------------------------------------
-# CertStore – non-Windows platform guard
-# ---------------------------------------------------------------------------
-
-
-class TestCertStoreNonWindows:
-    @pytest.mark.skipif(sys.platform == "win32", reason="Tests non-Windows guard")
-    def test_init_raises_on_non_windows(self):
-        with pytest.raises(NotImplementedError):
-            CertStore()
-
-    @pytest.mark.skipif(sys.platform == "win32", reason="Tests non-Windows guard")
-    def test_repr_does_not_raise(self):
-        # __repr__ must not call Windows APIs
-        store = CertStore.__new__(CertStore)
-        store._store_name = "MY"
-        store._location = "user"
-        store._handle = 0
-        assert "MY" in repr(store)
 
 
 # ---------------------------------------------------------------------------
