@@ -224,22 +224,22 @@ class TestSchannelAdapterWindowsIntegration:
     ):
         """
         Connect to a local TLS server without a client certificate.
-        The server's certificate is validated against our test CA, which we
-        add to a temporary root store.
+        The server's certificate is validated against our test CA, which is
+        loaded into a temporary in-memory store and passed to SchannelAdapter
+        via ``ca_store_handle``.  Using an in-memory store (rather than the
+        system ROOT store) avoids the Windows CTL auto-update network request
+        that blocks indefinitely in restricted CI environments.
         """
         import ctypes
-        import ctypes.wintypes as wintypes
         from requests_schannel._windows_types import (
-            CERT_STORE_PROV_SYSTEM,
-            CERT_SYSTEM_STORE_CURRENT_USER,
-            CERT_STORE_ADD_USE_EXISTING,
+            CERT_STORE_PROV_MEMORY,
+            CERT_STORE_ADD_REPLACE_EXISTING,
             _load_crypt32,
         )
 
         crypt32 = _load_crypt32()
         ca_cert, _ = ca_cert_and_key
 
-        # Add CA cert to current-user ROOT store temporarily
         ca_der = ca_cert.public_bytes(
             __import__("cryptography.hazmat.primitives.serialization", fromlist=["Encoding"]).Encoding.DER
         )
@@ -249,22 +249,23 @@ class TestSchannelAdapterWindowsIntegration:
             ca_buf,
             len(ca_der),
         )
-        root_store = crypt32.CertOpenStore(
-            ctypes.c_void_p(CERT_STORE_PROV_SYSTEM),
+        # In-memory store: no system-store write, no CTL network call
+        mem_store = crypt32.CertOpenStore(
+            ctypes.c_void_p(CERT_STORE_PROV_MEMORY),
             0,
             None,
-            CERT_SYSTEM_STORE_CURRENT_USER,
-            ctypes.c_wchar_p("ROOT"),
+            0,
+            None,
         )
         crypt32.CertAddCertificateContextToStore(
-            ctypes.c_void_p(root_store),
+            ctypes.c_void_p(mem_store),
             ctypes.c_void_p(ca_ctx),
-            CERT_STORE_ADD_USE_EXISTING,
+            CERT_STORE_ADD_REPLACE_EXISTING,
             None,
         )
 
         try:
-            adapter = SchannelAdapter(verify=True)
+            adapter = SchannelAdapter(verify=True, ca_store_handle=mem_store)
             session = requests.Session()
             session.mount("https://", adapter)
             resp = session.get(f"https://localhost:{tls_server.port}/", timeout=30)
@@ -272,8 +273,8 @@ class TestSchannelAdapterWindowsIntegration:
         finally:
             if ca_ctx:
                 crypt32.CertFreeCertificateContext(ctypes.c_void_p(ca_ctx))
-            if root_store:
-                crypt32.CertCloseStore(ctypes.c_void_p(root_store), 0)
+            if mem_store:
+                crypt32.CertCloseStore(ctypes.c_void_p(mem_store), 0)
 
     def test_tls_get_verify_false(self, tls_server):
         """Connect ignoring server certificate verification."""
@@ -292,13 +293,13 @@ class TestSchannelAdapterWindowsIntegration:
         """
         Connect to an mTLS server using a client certificate from the Windows
         certificate store.  The private key is never exported – SChannel
-        contacts the CSP directly.
+        contacts the CSP directly.  The CA cert is loaded into an in-memory
+        store (not the system ROOT store) to avoid CTL auto-update hangs.
         """
         import ctypes
         from requests_schannel._windows_types import (
-            CERT_STORE_PROV_SYSTEM,
-            CERT_SYSTEM_STORE_CURRENT_USER,
-            CERT_STORE_ADD_USE_EXISTING,
+            CERT_STORE_PROV_MEMORY,
+            CERT_STORE_ADD_REPLACE_EXISTING,
             _load_crypt32,
         )
 
@@ -311,17 +312,18 @@ class TestSchannelAdapterWindowsIntegration:
         ca_buf = (ctypes.c_ubyte * len(ca_der))(*ca_der)
         ca_ctx = crypt32.CertCreateCertificateContext(0x00010001, ca_buf, len(ca_der))
 
-        root_store = crypt32.CertOpenStore(
-            ctypes.c_void_p(CERT_STORE_PROV_SYSTEM),
+        # In-memory store: no system-store write, no CTL network call
+        mem_store = crypt32.CertOpenStore(
+            ctypes.c_void_p(CERT_STORE_PROV_MEMORY),
             0,
             None,
-            CERT_SYSTEM_STORE_CURRENT_USER,
-            ctypes.c_wchar_p("ROOT"),
+            0,
+            None,
         )
         crypt32.CertAddCertificateContextToStore(
-            ctypes.c_void_p(root_store),
+            ctypes.c_void_p(mem_store),
             ctypes.c_void_p(ca_ctx),
-            CERT_STORE_ADD_USE_EXISTING,
+            CERT_STORE_ADD_REPLACE_EXISTING,
             None,
         )
 
@@ -329,6 +331,7 @@ class TestSchannelAdapterWindowsIntegration:
             adapter = SchannelAdapter(
                 client_cert=windows_client_cert_thumbprint,
                 verify=True,
+                ca_store_handle=mem_store,
             )
             session = requests.Session()
             session.mount("https://", adapter)
@@ -337,8 +340,8 @@ class TestSchannelAdapterWindowsIntegration:
         finally:
             if ca_ctx:
                 crypt32.CertFreeCertificateContext(ctypes.c_void_p(ca_ctx))
-            if root_store:
-                crypt32.CertCloseStore(ctypes.c_void_p(root_store), 0)
+            if mem_store:
+                crypt32.CertCloseStore(ctypes.c_void_p(mem_store), 0)
 
     def test_mtls_missing_client_cert_raises(self, mtls_server):
         """

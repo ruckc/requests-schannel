@@ -64,6 +64,7 @@ if sys.platform == "win32":  # pragma: no cover
         UNISP_NAME,
         AUTHTYPE_SERVER,
         CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL,
+        CERT_CHAIN_ENGINE_CONFIG,
         CERT_CHAIN_POLICY_SSL,
         CERT_CHAIN_POLICY_PARA,
         CERT_CHAIN_POLICY_STATUS,
@@ -350,6 +351,13 @@ class SchannelSocket:
         The chain is built with ``CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL`` so that
         no network I/O is performed; chain building succeeds entirely from the
         local certificate stores (ROOT, CA, etc.).
+
+        When ``ca_store_handle`` is set a custom chain engine is created with
+        ``hExclusiveRoot`` pointing at that store.  This makes the engine treat
+        the certificates in that store as the *only* trusted roots, allowing
+        tests (and callers) to supply a custom CA cert via an in-memory
+        ``HCERTSTORE`` without modifying any system store (which would trigger
+        Windows's CTL auto-update and hang in restricted network environments).
         """
         # Step 1 – Retrieve the server's PCCERT_CONTEXT from the SChannel context.
         remote_cert = ctypes.c_void_p(0)
@@ -365,65 +373,88 @@ class SchannelSocket:
 
         try:
             # Step 2 – Build the certificate chain using only local/cached data.
-            chain_ctx = ctypes.c_void_p(0)
-            additional_store = (
-                ctypes.c_void_p(self._ca_store_handle)
-                if self._ca_store_handle
-                else ctypes.c_void_p(0)
-            )
-            ok = _crypt32.CertGetCertificateChain(
-                None,                                # hChainEngine: NULL = default
-                remote_cert,                         # pCertContext
-                None,                                # pTime: NULL = current time
-                additional_store,                    # hAdditionalStore
-                None,                                # pChainPara: NULL = defaults
-                CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL, # no network I/O
-                None,                                # pvReserved: NULL
-                ctypes.byref(chain_ctx),
-            )
-            if not ok or not chain_ctx.value:
-                raise SchannelCertValidationError(
-                    "CertGetCertificateChain failed",
-                    ctypes.GetLastError(),
+            #
+            # When the caller provided a custom CA store (ca_store_handle), we
+            # create a chain engine whose hExclusiveRoot is that store.  This
+            # makes CertGetCertificateChain trust only the certificates in that
+            # store as roots, without touching the system ROOT store (and
+            # therefore without triggering any CTL auto-update network calls).
+            #
+            # For normal production use (ca_store_handle=None) we pass NULL as
+            # the engine to use the default system chain engine.
+            chain_engine = ctypes.c_void_p(0)
+            if self._ca_store_handle:
+                engine_config = CERT_CHAIN_ENGINE_CONFIG()
+                engine_config.cbSize = ctypes.sizeof(CERT_CHAIN_ENGINE_CONFIG)
+                engine_config.hExclusiveRoot = ctypes.c_void_p(self._ca_store_handle)
+                ok = _crypt32.CertCreateCertificateChainEngine(
+                    ctypes.byref(engine_config),
+                    ctypes.byref(chain_engine),
                 )
-
-            try:
-                # Step 3 – Validate the chain using the SSL chain policy, which
-                # checks both the trust chain and the server hostname (SAN/CN).
-                ssl_para = SSL_EXTRA_CERT_CHAIN_POLICY_PARA()
-                ssl_para.cbSize = ctypes.sizeof(ssl_para)
-                ssl_para.dwAuthType = AUTHTYPE_SERVER
-                ssl_para.fdwChecks = 0
-                ssl_para.pwszServerName = self._server_name
-
-                policy_para = CERT_CHAIN_POLICY_PARA()
-                policy_para.cbSize = ctypes.sizeof(policy_para)
-                policy_para.dwFlags = 0
-                policy_para.pvExtraPolicyPara = ctypes.cast(
-                    ctypes.byref(ssl_para), ctypes.c_void_p
-                )
-
-                policy_status = CERT_CHAIN_POLICY_STATUS()
-                policy_status.cbSize = ctypes.sizeof(policy_status)
-
-                ok = _crypt32.CertVerifyCertificateChainPolicy(
-                    ctypes.c_void_p(CERT_CHAIN_POLICY_SSL),
-                    chain_ctx,
-                    ctypes.byref(policy_para),
-                    ctypes.byref(policy_status),
-                )
-                if not ok:
+                if not ok or not chain_engine.value:
                     raise SchannelCertValidationError(
-                        "CertVerifyCertificateChainPolicy call failed",
+                        "CertCreateCertificateChainEngine failed",
                         ctypes.GetLastError(),
                     )
-                if policy_status.dwError:
+
+            try:
+                chain_ctx = ctypes.c_void_p(0)
+                ok = _crypt32.CertGetCertificateChain(
+                    chain_engine,                        # custom engine or NULL (default)
+                    remote_cert,                         # pCertContext
+                    None,                                # pTime: NULL = current time
+                    ctypes.c_void_p(0),                  # hAdditionalStore: NULL
+                    None,                                # pChainPara: NULL = defaults
+                    CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL, # no network I/O
+                    None,                                # pvReserved: NULL
+                    ctypes.byref(chain_ctx),
+                )
+                if not ok or not chain_ctx.value:
                     raise SchannelCertValidationError(
-                        f"Server certificate validation failed for {self._server_name!r}",
-                        policy_status.dwError,
+                        "CertGetCertificateChain failed",
+                        ctypes.GetLastError(),
                     )
+
+                try:
+                    # Step 3 – Validate the chain using the SSL chain policy, which
+                    # checks both the trust chain and the server hostname (SAN/CN).
+                    ssl_para = SSL_EXTRA_CERT_CHAIN_POLICY_PARA()
+                    ssl_para.cbSize = ctypes.sizeof(ssl_para)
+                    ssl_para.dwAuthType = AUTHTYPE_SERVER
+                    ssl_para.fdwChecks = 0
+                    ssl_para.pwszServerName = self._server_name
+
+                    policy_para = CERT_CHAIN_POLICY_PARA()
+                    policy_para.cbSize = ctypes.sizeof(policy_para)
+                    policy_para.dwFlags = 0
+                    policy_para.pvExtraPolicyPara = ctypes.cast(
+                        ctypes.byref(ssl_para), ctypes.c_void_p
+                    )
+
+                    policy_status = CERT_CHAIN_POLICY_STATUS()
+                    policy_status.cbSize = ctypes.sizeof(policy_status)
+
+                    ok = _crypt32.CertVerifyCertificateChainPolicy(
+                        ctypes.c_void_p(CERT_CHAIN_POLICY_SSL),
+                        chain_ctx,
+                        ctypes.byref(policy_para),
+                        ctypes.byref(policy_status),
+                    )
+                    if not ok:
+                        raise SchannelCertValidationError(
+                            "CertVerifyCertificateChainPolicy call failed",
+                            ctypes.GetLastError(),
+                        )
+                    if policy_status.dwError:
+                        raise SchannelCertValidationError(
+                            f"Server certificate validation failed for {self._server_name!r}",
+                            policy_status.dwError,
+                        )
+                finally:
+                    _crypt32.CertFreeCertificateChain(chain_ctx)
             finally:
-                _crypt32.CertFreeCertificateChain(chain_ctx)
+                if chain_engine.value:
+                    _crypt32.CertFreeCertificateChainEngine(chain_engine)
         finally:
             _crypt32.CertFreeCertificateContext(remote_cert)
 

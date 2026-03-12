@@ -122,6 +122,7 @@ X509_ASN_ENCODING: int = 0x00000001
 PKCS_7_ASN_ENCODING: int = 0x00010000
 CERT_ENCODING_TYPE: int = X509_ASN_ENCODING | PKCS_7_ASN_ENCODING
 
+CERT_STORE_PROV_MEMORY: int = 2
 CERT_STORE_PROV_SYSTEM: int = 10
 CERT_SYSTEM_STORE_CURRENT_USER: int = 0x00010000
 CERT_SYSTEM_STORE_LOCAL_MACHINE: int = 0x00020000
@@ -270,6 +271,34 @@ class CERT_CHAIN_POLICY_STATUS(ctypes.Structure):
         ("lChainIndex", wintypes.LONG),
         ("lElementIndex", wintypes.LONG),
         ("pvExtraPolicyStatus", ctypes.c_void_p),
+    ]
+
+
+class CERT_CHAIN_ENGINE_CONFIG(ctypes.Structure):
+    """
+    Maps to CERT_CHAIN_ENGINE_CONFIG used with CertCreateCertificateChainEngine.
+
+    Setting ``hExclusiveRoot`` to an in-memory HCERTSTORE makes the chain
+    engine treat only certificates in that store as trusted roots, bypassing
+    the system ROOT store.  This allows tests to supply a custom CA cert
+    without modifying any system store (which would trigger Windows's CTL
+    auto-update network requests and hang in CI).
+    """
+
+    _fields_ = [
+        ("cbSize", wintypes.DWORD),
+        ("hRestrictedRoot", ctypes.c_void_p),
+        ("hRestrictedTrust", ctypes.c_void_p),
+        ("hRestrictedOther", ctypes.c_void_p),
+        ("cAdditionalStore", wintypes.DWORD),
+        ("rghAdditionalStore", ctypes.c_void_p),
+        ("dwFlags", wintypes.DWORD),
+        ("dwUrlRetrievalTimeout", wintypes.DWORD),
+        ("MaximumCachedCertificates", wintypes.DWORD),
+        ("CycleDetectionModulus", wintypes.DWORD),
+        ("hExclusiveRoot", ctypes.c_void_p),
+        ("hExclusiveTrustedPeople", ctypes.c_void_p),
+        ("dwExclusiveFlags", wintypes.DWORD),
     ]
 
 
@@ -422,6 +451,17 @@ def _load_crypt32() -> ctypes.WinDLL:  # type: ignore[name-defined]
         wintypes.DWORD,           # dwAddDisposition
         ctypes.POINTER(ctypes.c_void_p),  # ppStoreContext (out, optional)
     ]
+
+    # CertCreateCertificateChainEngine – create a custom chain engine
+    lib.CertCreateCertificateChainEngine.restype = wintypes.BOOL
+    lib.CertCreateCertificateChainEngine.argtypes = [
+        ctypes.POINTER(CERT_CHAIN_ENGINE_CONFIG),  # pConfig
+        ctypes.POINTER(ctypes.c_void_p),           # phChainEngine (out)
+    ]
+
+    # CertFreeCertificateChainEngine – free a custom chain engine
+    lib.CertFreeCertificateChainEngine.restype = None
+    lib.CertFreeCertificateChainEngine.argtypes = [ctypes.c_void_p]
 
     # CertGetCertificateChain – build a verified certificate chain
     lib.CertGetCertificateChain.restype = wintypes.BOOL

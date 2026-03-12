@@ -280,6 +280,13 @@ class SchannelAdapter(HTTPAdapter):
         Windows trusted-root store.
         ``False`` – skip server certificate validation (not recommended for
         production).
+    ca_store_handle:
+        Optional Windows ``HCERTSTORE`` handle whose certificates are treated
+        as the **exclusive** trusted roots for server certificate validation.
+        When set, the system ROOT store is not consulted during chain building
+        and no CTL auto-update network calls are made.  Intended for testing
+        with a custom CA cert held in an in-memory store; leave ``None`` for
+        normal production use (system ROOT store).
     """
 
     def __init__(
@@ -287,11 +294,13 @@ class SchannelAdapter(HTTPAdapter):
         client_cert: Optional[Union[str, int]] = None,
         cert_store: str = "MY",
         verify: bool = True,
+        ca_store_handle: Optional[int] = None,
         **kwargs: Any,
     ) -> None:
         self._client_cert_spec = client_cert
         self._cert_store_name = cert_store
         self._schannel_verify = verify
+        self._ca_store_handle = ca_store_handle
         self._client_cert_context: Optional[CertContext] = None
 
         super().__init__(**kwargs)
@@ -338,6 +347,7 @@ class SchannelAdapter(HTTPAdapter):
             client_cert_spec=self._client_cert_spec,
             cert_store_name=self._cert_store_name,
             schannel_verify=self._schannel_verify,
+            ca_store_handle=self._ca_store_handle,
             **connection_kw,
         )
 
