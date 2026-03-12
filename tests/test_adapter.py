@@ -99,6 +99,9 @@ class TestResolveClientCert:
             ctx = _resolve_client_cert(12345, "MY")
             assert isinstance(ctx, CertContext)
             assert ctx._handle == 12345
+            # Close within the mock so __del__ doesn't call the real
+            # CertFreeCertificateContext with a bogus pointer later.
+            ctx.close()
 
     @pytest.mark.skipif(sys.platform != "win32", reason="Windows only")
     def test_thumbprint_not_found_raises(self):

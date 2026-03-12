@@ -113,6 +113,9 @@ class TestCertContextMock:
             ctx._closed = False
             r = repr(ctx)
             assert "CertContext" in r
+            # Mark closed before the mock exits so __del__ does not call the
+            # real CertFreeCertificateContext with a fake pointer value later.
+            ctx._closed = True
 
     def test_access_after_close_raises(self):
         with patch("requests_schannel._cert_store.sys") as mock_sys:

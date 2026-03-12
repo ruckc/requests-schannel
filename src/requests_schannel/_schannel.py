@@ -48,6 +48,7 @@ if sys.platform == "win32":  # pragma: no cover
         SECBUFFER_TOKEN,
         SECBUFFER_VERSION,
         SECPKG_ATTR_STREAM_SIZES,
+        SECPKG_ATTR_REMOTE_CERT_CONTEXT,
         SECPKG_CRED_OUTBOUND,
         SP_PROT_TLS1_2_CLIENT,
         SP_PROT_TLS1_3_CLIENT,
@@ -57,11 +58,16 @@ if sys.platform == "win32":  # pragma: no cover
         ISC_REQ_REPLAY_DETECT,
         ISC_REQ_SEQUENCE_DETECT,
         ISC_REQ_STREAM,
-        SCH_CRED_AUTO_CRED_VALIDATION,
         SCH_CRED_MANUAL_CRED_VALIDATION,
         SCH_CRED_NO_DEFAULT_CREDS,
         SECURITY_NATIVE_DREP,
         UNISP_NAME,
+        AUTHTYPE_SERVER,
+        CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL,
+        CERT_CHAIN_POLICY_SSL,
+        CERT_CHAIN_POLICY_PARA,
+        CERT_CHAIN_POLICY_STATUS,
+        SSL_EXTRA_CERT_CHAIN_POLICY_PARA,
         CredHandle,
         CtxtHandle,
         SecBuffer,
@@ -69,9 +75,11 @@ if sys.platform == "win32":  # pragma: no cover
         SecPkgContext_StreamSizes,
         TimeStamp,
         _load_secur32,
+        _load_crypt32,
     )
 
     _secur32 = _load_secur32()
+    _crypt32 = _load_crypt32()
 
 # Maximum TLS record size (RFC 5246 §6.2.1)
 _TLS_MAX_RECORD = 16384
@@ -149,6 +157,8 @@ class SchannelSocket:
 
         self._acquire_credentials()
         self._do_handshake()
+        if self._verify:
+            self._verify_server_cert()
 
     # ------------------------------------------------------------------
     # Credentials acquisition
@@ -171,14 +181,14 @@ class SchannelSocket:
         else:
             scred.cCreds = 0
 
-        if self._verify:
-            scred.dwFlags = SCH_CRED_AUTO_CRED_VALIDATION
-            if self._ca_store_handle:
-                scred.hRootStore = self._ca_store_handle
-        else:
-            scred.dwFlags = (
-                SCH_CRED_MANUAL_CRED_VALIDATION | SCH_CRED_NO_DEFAULT_CREDS
-            )
+        # Always use manual credential validation.  SCH_CRED_AUTO_CRED_VALIDATION
+        # causes Windows to make blocking network calls (CTL auto-update,
+        # OCSP/CRL retrieval) inside InitializeSecurityContext, which cannot
+        # be bounded by our socket timeout and hangs indefinitely in CI
+        # environments without unrestricted internet access.  When verify=True,
+        # we perform equivalent chain validation ourselves in _verify_server_cert()
+        # using offline-only CertGetCertificateChain flags.
+        scred.dwFlags = SCH_CRED_MANUAL_CRED_VALIDATION | SCH_CRED_NO_DEFAULT_CREDS
 
         ts = TimeStamp()
         status = _secur32.AcquireCredentialsHandleW(
@@ -216,15 +226,12 @@ class SchannelSocket:
             | ISC_REQ_CONFIDENTIALITY
             | ISC_REQ_EXTENDED_ERROR
             | ISC_REQ_STREAM
+            # Required to activate SCH_CRED_MANUAL_CRED_VALIDATION set in the
+            # credential (see _acquire_credentials).  Without this flag SChannel
+            # ignores the manual-validation credential flag and performs its own
+            # automatic validation, which may block on network calls.
+            | ISC_REQ_MANUAL_CRED_VALIDATION
         )
-        # Per MSDN: SCH_CRED_MANUAL_CRED_VALIDATION in the credential is
-        # only honoured when ISC_REQ_MANUAL_CRED_VALIDATION is *also* set in
-        # the ISC request flags.  Without this flag SChannel performs
-        # automatic server certificate validation even when verify=False,
-        # which may block indefinitely on CI while Windows tries to download
-        # root CA updates from ctldl.windowsupdate.com.
-        if not self._verify:
-            isc_flags |= ISC_REQ_MANUAL_CRED_VALIDATION
 
         while True:
             # --- Output buffers -----------------------------------------
@@ -328,6 +335,97 @@ class SchannelSocket:
         if status != SEC_E_OK:
             raise SchannelError("QueryContextAttributes(STREAM_SIZES) failed", status)
         self._stream_sizes = sizes
+
+    def _verify_server_cert(self) -> None:  # pragma: no cover
+        """
+        Manually validate the server certificate chain against the Windows
+        certificate store.
+
+        Called after a successful handshake when ``verify=True``.  By doing
+        this ourselves (rather than relying on ``SCH_CRED_AUTO_CRED_VALIDATION``)
+        we avoid the Windows CTL auto-update mechanism, which makes blocking
+        network requests to ``ctldl.windowsupdate.com`` and cannot be bounded
+        by our socket timeout, causing indefinite hangs in CI environments.
+
+        The chain is built with ``CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL`` so that
+        no network I/O is performed; chain building succeeds entirely from the
+        local certificate stores (ROOT, CA, etc.).
+        """
+        # Step 1 – Retrieve the server's PCCERT_CONTEXT from the SChannel context.
+        remote_cert = ctypes.c_void_p(0)
+        status = _secur32.QueryContextAttributesW(
+            ctypes.byref(self._ctx),
+            SECPKG_ATTR_REMOTE_CERT_CONTEXT,
+            ctypes.byref(remote_cert),
+        )
+        if status != SEC_E_OK or not remote_cert.value:
+            raise SchannelCertValidationError(
+                "QueryContextAttributes(REMOTE_CERT_CONTEXT) failed", status
+            )
+
+        try:
+            # Step 2 – Build the certificate chain using only local/cached data.
+            chain_ctx = ctypes.c_void_p(0)
+            additional_store = (
+                ctypes.c_void_p(self._ca_store_handle)
+                if self._ca_store_handle
+                else ctypes.c_void_p(0)
+            )
+            ok = _crypt32.CertGetCertificateChain(
+                None,                                # hChainEngine: NULL = default
+                remote_cert,                         # pCertContext
+                None,                                # pTime: NULL = current time
+                additional_store,                    # hAdditionalStore
+                None,                                # pChainPara: NULL = defaults
+                CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL, # no network I/O
+                None,                                # pvReserved: NULL
+                ctypes.byref(chain_ctx),
+            )
+            if not ok or not chain_ctx.value:
+                raise SchannelCertValidationError(
+                    "CertGetCertificateChain failed",
+                    ctypes.GetLastError(),
+                )
+
+            try:
+                # Step 3 – Validate the chain using the SSL chain policy, which
+                # checks both the trust chain and the server hostname (SAN/CN).
+                ssl_para = SSL_EXTRA_CERT_CHAIN_POLICY_PARA()
+                ssl_para.cbSize = ctypes.sizeof(ssl_para)
+                ssl_para.dwAuthType = AUTHTYPE_SERVER
+                ssl_para.fdwChecks = 0
+                ssl_para.pwszServerName = self._server_name
+
+                policy_para = CERT_CHAIN_POLICY_PARA()
+                policy_para.cbSize = ctypes.sizeof(policy_para)
+                policy_para.dwFlags = 0
+                policy_para.pvExtraPolicyPara = ctypes.cast(
+                    ctypes.byref(ssl_para), ctypes.c_void_p
+                )
+
+                policy_status = CERT_CHAIN_POLICY_STATUS()
+                policy_status.cbSize = ctypes.sizeof(policy_status)
+
+                ok = _crypt32.CertVerifyCertificateChainPolicy(
+                    ctypes.c_void_p(CERT_CHAIN_POLICY_SSL),
+                    chain_ctx,
+                    ctypes.byref(policy_para),
+                    ctypes.byref(policy_status),
+                )
+                if not ok:
+                    raise SchannelCertValidationError(
+                        "CertVerifyCertificateChainPolicy call failed",
+                        ctypes.GetLastError(),
+                    )
+                if policy_status.dwError:
+                    raise SchannelCertValidationError(
+                        f"Server certificate validation failed for {self._server_name!r}",
+                        policy_status.dwError,
+                    )
+            finally:
+                _crypt32.CertFreeCertificateChain(chain_ctx)
+        finally:
+            _crypt32.CertFreeCertificateContext(remote_cert)
 
     # ------------------------------------------------------------------
     # send / recv

@@ -92,6 +92,21 @@ SCH_CRED_NO_SERVERNAME_CHECK: int = 0x00000004
 SCH_CRED_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT: int = 0x00000400
 
 # ---------------------------------------------------------------------------
+# Certificate chain validation constants
+# ---------------------------------------------------------------------------
+
+# Passed as pszPolicyOID to CertVerifyCertificateChainPolicy:
+# these are small integer pseudo-OIDs (CERT_CHAIN_POLICY_SSL = (LPCSTR) 4)
+CERT_CHAIN_POLICY_SSL: int = 4
+
+# dwFlags for CertGetCertificateChain – use only cached/local resources,
+# do not make any network calls for CRL/OCSP retrieval
+CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL: int = 0x00000004
+
+# dwAuthType for SSL_EXTRA_CERT_CHAIN_POLICY_PARA
+AUTHTYPE_SERVER: int = 2
+
+# ---------------------------------------------------------------------------
 # QueryContextAttributes attribute identifiers
 # ---------------------------------------------------------------------------
 
@@ -222,6 +237,39 @@ class CRYPTOAPI_BLOB(ctypes.Structure):
     _fields_ = [
         ("cbData", wintypes.DWORD),
         ("pbData", ctypes.POINTER(ctypes.c_ubyte)),
+    ]
+
+
+class SSL_EXTRA_CERT_CHAIN_POLICY_PARA(ctypes.Structure):
+    """Maps to SSL_EXTRA_CERT_CHAIN_POLICY_PARA for CertVerifyCertificateChainPolicy."""
+
+    _fields_ = [
+        ("cbSize", wintypes.DWORD),
+        ("dwAuthType", wintypes.DWORD),    # AUTHTYPE_SERVER = 2
+        ("fdwChecks", wintypes.DWORD),     # additional check flags (0 = default)
+        ("pwszServerName", ctypes.c_wchar_p),  # hostname to verify against SAN/CN
+    ]
+
+
+class CERT_CHAIN_POLICY_PARA(ctypes.Structure):
+    """Maps to CERT_CHAIN_POLICY_PARA passed to CertVerifyCertificateChainPolicy."""
+
+    _fields_ = [
+        ("cbSize", wintypes.DWORD),
+        ("dwFlags", wintypes.DWORD),
+        ("pvExtraPolicyPara", ctypes.c_void_p),
+    ]
+
+
+class CERT_CHAIN_POLICY_STATUS(ctypes.Structure):
+    """Maps to CERT_CHAIN_POLICY_STATUS returned by CertVerifyCertificateChainPolicy."""
+
+    _fields_ = [
+        ("cbSize", wintypes.DWORD),
+        ("dwError", wintypes.DWORD),
+        ("lChainIndex", wintypes.LONG),
+        ("lElementIndex", wintypes.LONG),
+        ("pvExtraPolicyStatus", ctypes.c_void_p),
     ]
 
 
@@ -374,5 +422,31 @@ def _load_crypt32() -> ctypes.WinDLL:  # type: ignore[name-defined]
         wintypes.DWORD,           # dwAddDisposition
         ctypes.POINTER(ctypes.c_void_p),  # ppStoreContext (out, optional)
     ]
+
+    # CertGetCertificateChain – build a verified certificate chain
+    lib.CertGetCertificateChain.restype = wintypes.BOOL
+    lib.CertGetCertificateChain.argtypes = [
+        ctypes.c_void_p,               # hChainEngine (NULL = default)
+        ctypes.c_void_p,               # pCertContext (PCCERT_CONTEXT)
+        ctypes.c_void_p,               # pTime (LPFILETIME, NULL = now)
+        ctypes.c_void_p,               # hAdditionalStore (HCERTSTORE, NULL)
+        ctypes.c_void_p,               # pChainPara (PCERT_CHAIN_PARA, NULL = defaults)
+        wintypes.DWORD,                # dwFlags (e.g. CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL)
+        ctypes.c_void_p,               # pvReserved (NULL)
+        ctypes.POINTER(ctypes.c_void_p),  # ppChainContext (PCCERT_CHAIN_CONTEXT*, out)
+    ]
+
+    # CertVerifyCertificateChainPolicy – validate a chain against a policy
+    lib.CertVerifyCertificateChainPolicy.restype = wintypes.BOOL
+    lib.CertVerifyCertificateChainPolicy.argtypes = [
+        ctypes.c_void_p,                          # pszPolicyOID (e.g. CERT_CHAIN_POLICY_SSL=4)
+        ctypes.c_void_p,                          # pChainContext (PCCERT_CHAIN_CONTEXT)
+        ctypes.POINTER(CERT_CHAIN_POLICY_PARA),   # pPolicyPara
+        ctypes.POINTER(CERT_CHAIN_POLICY_STATUS), # pPolicyStatus
+    ]
+
+    # CertFreeCertificateChain – free a chain context returned by CertGetCertificateChain
+    lib.CertFreeCertificateChain.restype = None
+    lib.CertFreeCertificateChain.argtypes = [ctypes.c_void_p]
 
     return lib
