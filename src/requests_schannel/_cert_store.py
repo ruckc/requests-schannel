@@ -19,7 +19,6 @@ if sys.platform == "win32":  # pragma: no cover
     import ctypes.wintypes as wintypes
 
     from ._windows_types import (
-        CERT_CLOSE_STORE_FORCE_FLAG,
         CERT_ENCODING_TYPE,
         CERT_FIND_ANY,
         CERT_FIND_SHA1_HASH,
@@ -338,9 +337,7 @@ class CertStore:
         """Close the certificate store handle."""
         if self._handle:
             if sys.platform == "win32":  # pragma: no cover
-                _crypt32.CertCloseStore(
-                    ctypes.c_void_p(self._handle), CERT_CLOSE_STORE_FORCE_FLAG
-                )
+                _crypt32.CertCloseStore(ctypes.c_void_p(self._handle), 0)
             self._handle = 0
 
     def __enter__(self) -> "CertStore":
