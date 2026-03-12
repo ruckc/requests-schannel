@@ -143,14 +143,18 @@ class _SchannelHTTPSConnection(urllib3.connection.HTTPSConnection):
         if self._client_cert_context is not None:
             cert_handle = self._client_cert_context.handle
 
-        self.sock = SchannelSocket(
-            raw,
-            server_name=self._tunnel_host or self.host,
-            cert_context_handle=cert_handle,
-            verify=self._schannel_verify,
-            ca_store_handle=self._ca_store_handle,
-            timeout=_sock_timeout,
-        )
+        try:
+            self.sock = SchannelSocket(
+                raw,
+                server_name=self._tunnel_host or self.host,
+                cert_context_handle=cert_handle,
+                verify=self._schannel_verify,
+                ca_store_handle=self._ca_store_handle,
+                timeout=_sock_timeout,
+            )
+        except Exception:
+            raw.close()
+            raise
         self.is_verified = self._schannel_verify
 
 

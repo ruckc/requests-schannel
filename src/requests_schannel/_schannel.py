@@ -65,6 +65,7 @@ if sys.platform == "win32":  # pragma: no cover
         AUTHTYPE_SERVER,
         CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL,
         CERT_CHAIN_ENGINE_CONFIG,
+        CERT_CHAIN_PARA,
         CERT_CHAIN_POLICY_SSL,
         CERT_CHAIN_POLICY_PARA,
         CERT_CHAIN_POLICY_STATUS,
@@ -398,13 +399,16 @@ class SchannelSocket:
                     )
 
             try:
+                chain_para = CERT_CHAIN_PARA()
+                chain_para.cbSize = ctypes.sizeof(CERT_CHAIN_PARA)
+
                 chain_ctx = ctypes.c_void_p(0)
                 ok = _crypt32.CertGetCertificateChain(
                     chain_engine,                        # custom engine or NULL (default)
                     remote_cert,                         # pCertContext
                     None,                                # pTime: NULL = current time
                     ctypes.c_void_p(0),                  # hAdditionalStore: NULL
-                    None,                                # pChainPara: NULL = defaults
+                    ctypes.byref(chain_para),            # pChainPara (required)
                     CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL, # no network I/O
                     None,                                # pvReserved: NULL
                     ctypes.byref(chain_ctx),
@@ -617,27 +621,70 @@ class SchannelSocket:
 
 
 class _SchannelFile:  # pragma: no cover
-    """Minimal file-like object backed by a :class:`SchannelSocket`."""
+    """
+    File-like object backed by a :class:`SchannelSocket`.
+
+    ``http.client.HTTPResponse`` expects a ``BufferedIOBase``-like interface
+    when reading responses: ``read``, ``readline``, ``readinto``, ``read1``,
+    ``peek``, ``fileno``, and ``flush`` are all called in various code paths.
+    """
 
     def __init__(self, sock: SchannelSocket, mode: str) -> None:
         self._sock = sock
         self._mode = mode
         self._closed = False
+        self._peek_buf: bytes = b""
 
     def read(self, size: int = -1) -> bytes:
-        if size < 0:
+        if size < 0 or size is None:
             chunks = []
+            if self._peek_buf:
+                chunks.append(self._peek_buf)
+                self._peek_buf = b""
             while True:
                 chunk = self._sock.recv(4096)
                 if not chunk:
                     break
                 chunks.append(chunk)
             return b"".join(chunks)
+        if self._peek_buf:
+            if len(self._peek_buf) >= size:
+                result = self._peek_buf[:size]
+                self._peek_buf = self._peek_buf[size:]
+                return result
+            result = self._peek_buf
+            self._peek_buf = b""
+            remaining = size - len(result)
+            data = self._sock.recv(remaining)
+            return result + data
         return self._sock.recv(size)
 
-    def readline(self) -> bytes:
+    def read1(self, size: int = -1) -> bytes:
+        """Read up to *size* bytes with at most one call to the underlying socket."""
+        return self.read(size)
+
+    def readinto(self, b: bytearray) -> int:
+        """Read up to len(b) bytes into *b* and return number of bytes read."""
+        data = self.read(len(b))
+        n = len(data)
+        b[:n] = data
+        return n
+
+    def readline(self, limit: int = -1) -> bytes:
         line = b""
-        while True:
+        # Drain peek buffer first
+        if self._peek_buf:
+            idx = self._peek_buf.find(b"\n")
+            if idx >= 0:
+                idx += 1  # include the newline
+                if limit < 0 or idx <= limit:
+                    line = self._peek_buf[:idx]
+                    self._peek_buf = self._peek_buf[idx:]
+                    return line
+            # No newline in peek buffer; use it all
+            line = self._peek_buf
+            self._peek_buf = b""
+        while limit < 0 or len(line) < limit:
             c = self._sock.recv(1)
             if not c:
                 break
@@ -645,6 +692,12 @@ class _SchannelFile:  # pragma: no cover
             if c == b"\n":
                 break
         return line
+
+    def peek(self, size: int = -1) -> bytes:
+        """Return buffered data without advancing the read position."""
+        if not self._peek_buf:
+            self._peek_buf = self._sock.recv(size if size > 0 else 4096)
+        return self._peek_buf
 
     def write(self, data: bytes) -> int:
         return self._sock.send(data)
@@ -658,6 +711,9 @@ class _SchannelFile:  # pragma: no cover
     @property
     def closed(self) -> bool:
         return self._closed
+
+    def fileno(self) -> int:
+        return self._sock.fileno()
 
     def readable(self) -> bool:
         return "r" in self._mode

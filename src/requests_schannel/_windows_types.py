@@ -241,6 +241,29 @@ class CRYPTOAPI_BLOB(ctypes.Structure):
     ]
 
 
+class CERT_USAGE_MATCH(ctypes.Structure):
+    """Maps to CERT_USAGE_MATCH used within CERT_CHAIN_PARA."""
+
+    _fields_ = [
+        ("dwType", wintypes.DWORD),
+        ("Usage", CRYPTOAPI_BLOB),  # CERT_ENHKEY_USAGE (OID list)
+    ]
+
+
+class CERT_CHAIN_PARA(ctypes.Structure):
+    """
+    Maps to CERT_CHAIN_PARA passed to CertGetCertificateChain.
+
+    At minimum ``cbSize`` must be set.  ``RequestedUsage`` can be left
+    zero-initialised to accept any usage.
+    """
+
+    _fields_ = [
+        ("cbSize", wintypes.DWORD),
+        ("RequestedUsage", CERT_USAGE_MATCH),
+    ]
+
+
 class SSL_EXTRA_CERT_CHAIN_POLICY_PARA(ctypes.Structure):
     """Maps to SSL_EXTRA_CERT_CHAIN_POLICY_PARA for CertVerifyCertificateChainPolicy."""
 
@@ -466,14 +489,14 @@ def _load_crypt32() -> ctypes.WinDLL:  # type: ignore[name-defined]
     # CertGetCertificateChain – build a verified certificate chain
     lib.CertGetCertificateChain.restype = wintypes.BOOL
     lib.CertGetCertificateChain.argtypes = [
-        ctypes.c_void_p,               # hChainEngine (NULL = default)
-        ctypes.c_void_p,               # pCertContext (PCCERT_CONTEXT)
-        ctypes.c_void_p,               # pTime (LPFILETIME, NULL = now)
-        ctypes.c_void_p,               # hAdditionalStore (HCERTSTORE, NULL)
-        ctypes.c_void_p,               # pChainPara (PCERT_CHAIN_PARA, NULL = defaults)
-        wintypes.DWORD,                # dwFlags (e.g. CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL)
-        ctypes.c_void_p,               # pvReserved (NULL)
-        ctypes.POINTER(ctypes.c_void_p),  # ppChainContext (PCCERT_CHAIN_CONTEXT*, out)
+        ctypes.c_void_p,                 # hChainEngine (NULL = default)
+        ctypes.c_void_p,                 # pCertContext (PCCERT_CONTEXT)
+        ctypes.c_void_p,                 # pTime (LPFILETIME, NULL = now)
+        ctypes.c_void_p,                 # hAdditionalStore (HCERTSTORE, NULL)
+        ctypes.POINTER(CERT_CHAIN_PARA), # pChainPara (required, not NULL)
+        wintypes.DWORD,                  # dwFlags (e.g. CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL)
+        ctypes.c_void_p,                 # pvReserved (NULL)
+        ctypes.POINTER(ctypes.c_void_p), # ppChainContext (PCCERT_CHAIN_CONTEXT*, out)
     ]
 
     # CertVerifyCertificateChainPolicy – validate a chain against a policy

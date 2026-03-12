@@ -309,6 +309,23 @@ class _SimpleHandler(BaseHTTPRequestHandler):
         pass
 
 
+class _TimeoutHTTPServer(HTTPServer):
+    """HTTPServer subclass that sets a timeout on the listening socket.
+
+    Without a timeout, ``ssl.do_handshake()`` inside ``accept()`` can block
+    indefinitely when a client connects but never completes the TLS handshake
+    (e.g. if the client-side SChannel code raises before finishing).  This
+    causes fixture teardown to hang because ``shutdown()`` waits for all
+    requests to complete.
+    """
+
+    timeout: float = 5  # seconds – checked by ``_handle_request_noblock``
+
+    def handle_error(self, request: socket.socket, client_address: tuple) -> None:
+        """Silently ignore SSL errors from malformed / incomplete connections."""
+        pass
+
+
 class TLSServer(threading.Thread):
     """
     A minimal HTTPS server that runs in a background thread.
@@ -370,12 +387,12 @@ class TLSServer(threading.Thread):
                 ctx.verify_mode = ssl.CERT_REQUIRED
                 ctx.load_verify_locations(ca_path)
 
-            httpd = HTTPServer(("127.0.0.1", 0), _SimpleHandler)
+            httpd = _TimeoutHTTPServer(("127.0.0.1", 0), _SimpleHandler)
             httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
             self._server = httpd
             self._port = httpd.server_address[1]
             self._ready.set()
-            httpd.serve_forever()
+            httpd.serve_forever(poll_interval=0.5)
 
     def start_and_wait(self) -> "TLSServer":
         self.start()
