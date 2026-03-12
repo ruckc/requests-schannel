@@ -189,7 +189,7 @@ class _SchannelHTTPSConnectionPool(urllib3.HTTPSConnectionPool):
 
     def _new_conn(self) -> _SchannelHTTPSConnection:  # pragma: no cover
         conn = _SchannelHTTPSConnection(
-            host=self._proxy_host or self.host,
+            host=getattr(self, "_proxy_host", None) or self.host,
             port=self.port,
             timeout=self.timeout.connect_timeout
             if hasattr(self.timeout, "connect_timeout")
