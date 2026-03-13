@@ -347,30 +347,126 @@ class SchannelSocket:
         self._query_stream_sizes()
         self._handshake_done = True
 
-    def _handle_renegotiate(self, extra_data: bytes) -> None:  # pragma: no cover
+    def _handle_renegotiate(self, renegotiate_data: bytes, remaining_data: bytes) -> None:  # pragma: no cover
         """
         Handle ``SEC_I_RENEGOTIATE`` from ``DecryptMessage``.
 
-        In TLS 1.3 this status is returned for post-handshake messages
-        (NewSessionTicket, KeyUpdate).  SChannel processes these messages
-        internally within ``DecryptMessage`` — no ``InitializeSecurityContext``
-        call is needed.
+        Per MSDN, when ``DecryptMessage`` returns ``SEC_I_RENEGOTIATE``, the
+        application must call ``InitializeSecurityContext`` with the
+        ``SECBUFFER_EXTRA`` data to acknowledge the post-handshake message.
 
-        Calling ISC corrupts the TLS 1.3 session:
-        - ISC with the EXTRA data as ``SECBUFFER_TOKEN`` →
-          ``SEC_E_INVALID_HANDLE`` (EXTRA is application data, not handshake)
-        - ISC with NULL ``pInput`` → triggers a client-side KeyUpdate that
-          desynchronizes the traffic keys → ``SEC_E_DECRYPT_FAILURE`` on the
-          next ``DecryptMessage``
+        For TLS 1.3, this status is returned for NewSessionTicket and KeyUpdate
+        messages.  SChannel has already decrypted the record internally, but
+        ISC must be called to update the security context state.
 
-        The *extra_data* (remaining bytes after the consumed TLS record)
-        is saved in ``self._recv_buf`` for the caller to continue decrypting.
+        **CRITICAL**: The ``SECBUFFER_EXTRA`` data from ``DecryptMessage`` must
+        be extracted from the **original** ``self._recv_buf`` (immutable Python
+        ``bytes``), **not** from the ctypes output buffers whose ``pvBuffer``
+        pointers reference in-place–modified (corrupted) memory.
+
+        Parameters
+        ----------
+        renegotiate_data:
+            The SECBUFFER_EXTRA contents extracted from the original recv_buf.
+            This is passed to ISC as SECBUFFER_TOKEN input.
+        remaining_data:
+            Any data after the EXTRA region that should be passed to the next
+            DecryptMessage call (typically empty).
         """
-        logger.debug(
-            "SEC_I_RENEGOTIATE handled (no ISC needed), %d bytes EXTRA to decrypt",
-            len(extra_data),
+        in_data = renegotiate_data
+
+        isc_flags = (
+            ISC_REQ_SEQUENCE_DETECT
+            | ISC_REQ_REPLAY_DETECT
+            | ISC_REQ_CONFIDENTIALITY
+            | ISC_REQ_EXTENDED_ERROR
+            | ISC_REQ_ALLOCATE_MEMORY
+            | ISC_REQ_STREAM
+            | ISC_REQ_MANUAL_CRED_VALIDATION
         )
-        self._recv_buf = extra_data
+
+        while True:
+            # --- Output buffers -----------------------------------------
+            out_bufs = _make_sec_buffer_array(2)
+            out_bufs[0].cbBuffer = 0
+            out_bufs[0].BufferType = SECBUFFER_TOKEN
+            out_bufs[0].pvBuffer = None
+            out_bufs[1].cbBuffer = 0
+            out_bufs[1].BufferType = SECBUFFER_ALERT
+            out_bufs[1].pvBuffer = None
+            out_desc = _make_sec_buffer_desc(out_bufs)
+
+            # --- Input buffers ------------------------------------------
+            if in_data:
+                in_raw = ctypes.create_string_buffer(in_data)
+                in_bufs = _make_sec_buffer_array(2)
+                in_bufs[0].cbBuffer = len(in_data)
+                in_bufs[0].BufferType = SECBUFFER_TOKEN
+                in_bufs[0].pvBuffer = ctypes.cast(in_raw, ctypes.c_void_p)
+                in_bufs[1].cbBuffer = 0
+                in_bufs[1].BufferType = SECBUFFER_EMPTY
+                in_bufs[1].pvBuffer = None
+                in_desc = _make_sec_buffer_desc(in_bufs)
+                p_in_desc = ctypes.byref(in_desc)
+            else:
+                in_bufs = None
+                p_in_desc = None
+
+            out_flags = wintypes.ULONG(0)
+            ts = TimeStamp()
+
+            status = int(_secur32.InitializeSecurityContextW(
+                ctypes.byref(self._cred),
+                ctypes.byref(self._ctx),
+                self._server_name,
+                isc_flags,
+                0,
+                SECURITY_NATIVE_DREP,
+                p_in_desc,
+                0,
+                None,
+                ctypes.byref(out_desc),
+                ctypes.byref(out_flags),
+                ctypes.byref(ts),
+            ))
+
+            logger.debug("ISC (renegotiate): 0x%08X", status)
+
+            # Send any output tokens produced by ISC
+            if out_bufs[0].cbBuffer > 0 and out_bufs[0].pvBuffer:
+                token = ctypes.string_at(out_bufs[0].pvBuffer, out_bufs[0].cbBuffer)
+                _secur32.FreeContextBuffer(out_bufs[0].pvBuffer)
+                out_bufs[0].pvBuffer = None
+                self._sock.sendall(token)
+                logger.debug("ISC (renegotiate): sent %d bytes to server", len(token))
+
+            # Check for EXTRA data from ISC
+            extra = b""
+            if in_bufs is not None and in_bufs[1].BufferType == SECBUFFER_EXTRA and in_bufs[1].cbBuffer > 0:
+                extra = in_data[len(in_data) - in_bufs[1].cbBuffer:]
+
+            if status == SEC_E_OK:
+                logger.debug(
+                    "ISC (renegotiate): complete, %d bytes ISC-extra, %d bytes remaining",
+                    len(extra), len(remaining_data),
+                )
+                # Combine any ISC leftover with remaining data for next DecryptMessage
+                self._recv_buf = extra + remaining_data
+                return
+            elif status == SEC_I_CONTINUE_NEEDED:
+                # ISC needs more server data — read from the socket
+                chunk = self._sock.recv(_RECV_CHUNK)
+                if not chunk:
+                    raise SchannelError("Server closed connection during renegotiation")
+                in_data = extra + chunk
+            elif status == SEC_E_INCOMPLETE_MESSAGE:
+                chunk = self._sock.recv(_RECV_CHUNK)
+                if not chunk:
+                    raise SchannelError("Server closed connection during renegotiation (incomplete)")
+                in_data = in_data + chunk
+            else:
+                logger.error("ISC (renegotiate) failed: 0x%08X", status)
+                raise SchannelError("Renegotiation failed", status)
 
     def _query_stream_sizes(self) -> None:  # pragma: no cover
         sizes = SecPkgContext_StreamSizes()
@@ -623,33 +719,49 @@ class SchannelSocket:
                     pass  # fall through to read more data
                 elif status == SEC_I_RENEGOTIATE:
                     # TLS 1.3 post-handshake message (NewSessionTicket or
-                    # KeyUpdate).  SChannel has consumed one TLS record
-                    # containing the post-handshake message and modified
-                    # the ctypes buffer in-place.  No ISC call is needed —
-                    # SChannel processes these internally.  We must:
-                    # 1. Calculate consumed bytes from HEADER+DATA+TRAILER
-                    # 2. Extract remaining data from the ORIGINAL recv_buf
-                    #    (Python bytes, unaffected by in-place modification)
-                    # 3. Continue decrypting remaining data
-                    consumed = 0
+                    # KeyUpdate).  Per MSDN, we must call ISC with the
+                    # SECBUFFER_EXTRA contents to acknowledge the message.
+                    #
+                    # CRITICAL: DecryptMessage modifies the ctypes buffer
+                    # in-place, so pvBuffer pointers are corrupted.  We
+                    # extract data from the ORIGINAL self._recv_buf
+                    # (immutable Python bytes, unaffected by modification).
+                    #
+                    # The EXTRA buffer's cbBuffer tells us how many bytes
+                    # ISC needs.  These come from the END of the original
+                    # input (same layout as SEC_E_OK's EXTRA).
+                    extra_size = 0
                     for i in range(4):
                         buftype = dec_bufs[i].BufferType
                         bufsz = dec_bufs[i].cbBuffer
                         logger.debug("  buf[%d]: type=%d size=%d", i, buftype, bufsz)
-                        if buftype in (SECBUFFER_STREAM_HEADER, SECBUFFER_DATA,
-                                       SECBUFFER_STREAM_TRAILER):
-                            consumed += bufsz
-                    # Real extra = original data after the consumed record
+                        if buftype == SECBUFFER_EXTRA:
+                            extra_size = bufsz
+
                     original_data = self._recv_buf
-                    real_extra = original_data[consumed:]
+                    total_size = len(original_data)
+
+                    if extra_size > 0 and extra_size <= total_size:
+                        # EXTRA region: last extra_size bytes of input
+                        extra_offset = total_size - extra_size
+                        renegotiate_data = original_data[extra_offset:]
+                        # Anything BEFORE the EXTRA offset that wasn't
+                        # consumed as HEADER+DATA+TRAILER is discarded
+                        # (it was the consumed handshake record).
+                        remaining_data = b""
+                    else:
+                        renegotiate_data = b""
+                        remaining_data = b""
+
                     logger.debug(
-                        "DecryptMessage: SEC_I_RENEGOTIATE, consumed=%d, real_extra=%d bytes",
-                        consumed, len(real_extra),
+                        "DecryptMessage: SEC_I_RENEGOTIATE, extra_size=%d, "
+                        "renegotiate=%d bytes, remaining=%d bytes",
+                        extra_size, len(renegotiate_data), len(remaining_data),
                     )
                     self._recv_buf = b""
-                    self._handle_renegotiate(real_extra)
-                    # _handle_renegotiate saved real_extra in self._recv_buf.
-                    # Continue the loop to decrypt it.
+                    self._handle_renegotiate(renegotiate_data, remaining_data)
+                    # _handle_renegotiate updated self._recv_buf.
+                    # Continue the loop to decrypt any remaining data.
                     continue
                 elif status == SEC_E_CONTEXT_EXPIRED:
                     # Server sent close_notify — graceful TLS shutdown.
