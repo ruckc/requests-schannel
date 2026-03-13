@@ -701,7 +701,7 @@ class SchannelSocket:
                             consumed += bufsz
                     # Real extra = original data after the consumed record
                     original_data = self._recv_buf
-                    real_extra = original_data[consumed:] if consumed > 0 else b""
+                    real_extra = original_data[consumed:]
                     logger.debug(
                         "DecryptMessage: SEC_I_RENEGOTIATE, consumed=%d, real_extra=%d bytes",
                         consumed, len(real_extra),
