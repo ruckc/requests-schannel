@@ -683,23 +683,32 @@ class SchannelSocket:
                     pass  # fall through to read more data
                 elif status == SEC_I_RENEGOTIATE:
                     # TLS 1.3 post-handshake message (NewSessionTicket or
-                    # KeyUpdate).  Extract EXTRA data (remaining encrypted
-                    # application data), then call ISC with empty input to
-                    # acknowledge the renegotiation notification.
-                    extra = b""
+                    # KeyUpdate).  SChannel has consumed one TLS record
+                    # containing the post-handshake message and modified
+                    # the ctypes buffer in-place.  We must:
+                    # 1. Calculate consumed bytes from HEADER+DATA+TRAILER
+                    # 2. Extract remaining data from the ORIGINAL recv_buf
+                    #    (Python bytes, unaffected by in-place modification)
+                    # 3. Call ISC with empty input to acknowledge
+                    # 4. Continue decrypting remaining data
+                    consumed = 0
                     for i in range(4):
                         buftype = dec_bufs[i].BufferType
                         bufsz = dec_bufs[i].cbBuffer
                         logger.debug("  buf[%d]: type=%d size=%d", i, buftype, bufsz)
-                        if buftype == SECBUFFER_EXTRA and bufsz:
-                            extra = ctypes.string_at(
-                                dec_bufs[i].pvBuffer, bufsz
-                            )
-                    logger.debug("DecryptMessage: SEC_I_RENEGOTIATE, extra=%d bytes",
-                                 len(extra))
+                        if buftype in (SECBUFFER_STREAM_HEADER, SECBUFFER_DATA,
+                                       SECBUFFER_STREAM_TRAILER):
+                            consumed += bufsz
+                    # Real extra = original data after the consumed record
+                    original_data = self._recv_buf
+                    real_extra = original_data[consumed:] if consumed > 0 else b""
+                    logger.debug(
+                        "DecryptMessage: SEC_I_RENEGOTIATE, consumed=%d, real_extra=%d bytes",
+                        consumed, len(real_extra),
+                    )
                     self._recv_buf = b""
-                    self._handle_renegotiate(extra)
-                    # _handle_renegotiate saved extra in self._recv_buf.
+                    self._handle_renegotiate(real_extra)
+                    # _handle_renegotiate saved real_extra in self._recv_buf.
                     # Continue the loop to decrypt it.
                     continue
                 elif status == SEC_E_CONTEXT_EXPIRED:
