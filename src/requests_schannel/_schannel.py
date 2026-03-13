@@ -742,12 +742,12 @@ class SchannelSocket:
                     total_size = len(original_data)
 
                     if extra_size > 0 and extra_size <= total_size:
-                        # EXTRA region: last extra_size bytes of input
+                        # EXTRA starts at (total - extra_size) in the original
+                        # buffer, mirroring SEC_E_OK's EXTRA layout.  For TLS
+                        # 1.3 NewSessionTicket, extra_size typically equals
+                        # total_size (the entire record goes to ISC).
                         extra_offset = total_size - extra_size
                         renegotiate_data = original_data[extra_offset:]
-                        # Anything BEFORE the EXTRA offset that wasn't
-                        # consumed as HEADER+DATA+TRAILER is discarded
-                        # (it was the consumed handshake record).
                         remaining_data = b""
                     else:
                         renegotiate_data = b""
