@@ -352,85 +352,25 @@ class SchannelSocket:
         Handle ``SEC_I_RENEGOTIATE`` from ``DecryptMessage``.
 
         In TLS 1.3 this status is returned for post-handshake messages
-        (NewSessionTicket, KeyUpdate).  SChannel has already parsed the
-        post-handshake message internally; the application must call
-        ``InitializeSecurityContext`` with **empty input** to acknowledge
-        the notification.
+        (NewSessionTicket, KeyUpdate).  SChannel processes these messages
+        internally within ``DecryptMessage`` — no ``InitializeSecurityContext``
+        call is needed.
 
-        The *extra_data* from ``DecryptMessage`` (remaining encrypted
-        application data) is **not** passed to ISC — it is application
-        data, not handshake data.  Passing it as ``SECBUFFER_TOKEN``
-        corrupts the security context (``SEC_E_INVALID_HANDLE``).
+        Calling ISC corrupts the TLS 1.3 session:
+        - ISC with the EXTRA data as ``SECBUFFER_TOKEN`` →
+          ``SEC_E_INVALID_HANDLE`` (EXTRA is application data, not handshake)
+        - ISC with NULL ``pInput`` → triggers a client-side KeyUpdate that
+          desynchronizes the traffic keys → ``SEC_E_DECRYPT_FAILURE`` on the
+          next ``DecryptMessage``
 
-        After ISC returns ``SEC_E_OK``, the caller should continue
-        decrypting *extra_data* normally with ``DecryptMessage``.
+        The *extra_data* (remaining bytes after the consumed TLS record)
+        is saved in ``self._recv_buf`` for the caller to continue decrypting.
         """
-        isc_flags = (
-            ISC_REQ_SEQUENCE_DETECT
-            | ISC_REQ_REPLAY_DETECT
-            | ISC_REQ_CONFIDENTIALITY
-            | ISC_REQ_EXTENDED_ERROR
-            | ISC_REQ_ALLOCATE_MEMORY
-            | ISC_REQ_STREAM
-            | ISC_REQ_MANUAL_CRED_VALIDATION
+        logger.debug(
+            "SEC_I_RENEGOTIATE handled (no ISC needed), %d bytes EXTRA to decrypt",
+            len(extra_data),
         )
-
-        # Output buffer for any token ISC might produce
-        out_bufs = _make_sec_buffer_array(2)
-        out_bufs[0].cbBuffer = 0
-        out_bufs[0].BufferType = SECBUFFER_TOKEN
-        out_bufs[0].pvBuffer = None
-        out_bufs[1].cbBuffer = 0
-        out_bufs[1].BufferType = SECBUFFER_ALERT
-        out_bufs[1].pvBuffer = None
-        out_desc = _make_sec_buffer_desc(out_bufs)
-
-        ctx_attrs = wintypes.ULONG(0)
-        ts = TimeStamp()
-
-        # Call ISC with empty input to acknowledge the post-handshake message.
-        # Do NOT pass the EXTRA data — it's application data, not a handshake token.
-        status = int(_secur32.InitializeSecurityContextW(
-            ctypes.byref(self._cred),
-            ctypes.byref(self._ctx),   # existing context
-            self._server_name,
-            isc_flags,
-            0,
-            SECURITY_NATIVE_DREP,
-            None,                      # pInput = NULL (empty input)
-            0,
-            ctypes.byref(self._ctx),   # phNewContext (same as phContext)
-            ctypes.byref(out_desc),
-            ctypes.byref(ctx_attrs),
-            ctypes.byref(ts),
-        ))
-        logger.debug("ISC (renegotiate): 0x%08X", status)
-
-        # Send any output token produced by SChannel
-        if out_bufs[0].cbBuffer > 0 and out_bufs[0].pvBuffer:
-            token = ctypes.string_at(out_bufs[0].pvBuffer, out_bufs[0].cbBuffer)
-            _secur32.FreeContextBuffer(out_bufs[0].pvBuffer)
-            out_bufs[0].pvBuffer = None
-            self._sock.sendall(token)
-            logger.debug("ISC (renegotiate): sent %d-byte output token", len(token))
-
-        if status == SEC_E_OK:
-            logger.debug("ISC (renegotiate): complete, %d bytes EXTRA to decrypt",
-                         len(extra_data))
-            # Save the EXTRA data for the caller to decrypt
-            self._recv_buf = extra_data
-            return
-        elif status == SEC_I_CONTINUE_NEEDED:
-            # For TLS 1.3 this shouldn't happen, but handle it gracefully.
-            # The token was already sent above; now read more data and loop.
-            logger.debug("ISC (renegotiate): SEC_I_CONTINUE_NEEDED, reading more data")
-            raise SchannelError(
-                "Unexpected SEC_I_CONTINUE_NEEDED during TLS 1.3 renegotiation",
-                status,
-            )
-        else:
-            logger.error("ISC (renegotiate) failed: 0x%08X", status)
-            raise SchannelError("Renegotiation failed", status)
+        self._recv_buf = extra_data
 
     def _query_stream_sizes(self) -> None:  # pragma: no cover
         sizes = SecPkgContext_StreamSizes()
@@ -685,12 +625,12 @@ class SchannelSocket:
                     # TLS 1.3 post-handshake message (NewSessionTicket or
                     # KeyUpdate).  SChannel has consumed one TLS record
                     # containing the post-handshake message and modified
-                    # the ctypes buffer in-place.  We must:
+                    # the ctypes buffer in-place.  No ISC call is needed —
+                    # SChannel processes these internally.  We must:
                     # 1. Calculate consumed bytes from HEADER+DATA+TRAILER
                     # 2. Extract remaining data from the ORIGINAL recv_buf
                     #    (Python bytes, unaffected by in-place modification)
-                    # 3. Call ISC with empty input to acknowledge
-                    # 4. Continue decrypting remaining data
+                    # 3. Continue decrypting remaining data
                     consumed = 0
                     for i in range(4):
                         buftype = dec_bufs[i].BufferType
