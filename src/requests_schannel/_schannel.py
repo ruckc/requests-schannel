@@ -38,6 +38,7 @@ if sys.platform == "win32":  # pragma: no cover
     from ._windows_types import (
         SCH_CREDENTIALS,
         SCH_CREDENTIALS_VERSION,
+        SEC_E_CONTEXT_EXPIRED,
         SEC_E_INCOMPLETE_MESSAGE,
         SEC_E_OK,
         SEC_I_CONTINUE_NEEDED,
@@ -346,6 +347,91 @@ class SchannelSocket:
         self._query_stream_sizes()
         self._handshake_done = True
 
+    def _handle_renegotiate(self, extra_data: bytes) -> None:  # pragma: no cover
+        """
+        Handle ``SEC_I_RENEGOTIATE`` from ``DecryptMessage``.
+
+        In TLS 1.3 this status is returned for post-handshake messages
+        (NewSessionTicket, KeyUpdate).  SChannel has already parsed the
+        post-handshake message internally; the application must call
+        ``InitializeSecurityContext`` with **empty input** to acknowledge
+        the notification.
+
+        The *extra_data* from ``DecryptMessage`` (remaining encrypted
+        application data) is **not** passed to ISC — it is application
+        data, not handshake data.  Passing it as ``SECBUFFER_TOKEN``
+        corrupts the security context (``SEC_E_INVALID_HANDLE``).
+
+        After ISC returns ``SEC_E_OK``, the caller should continue
+        decrypting *extra_data* normally with ``DecryptMessage``.
+        """
+        isc_flags = (
+            ISC_REQ_SEQUENCE_DETECT
+            | ISC_REQ_REPLAY_DETECT
+            | ISC_REQ_CONFIDENTIALITY
+            | ISC_REQ_EXTENDED_ERROR
+            | ISC_REQ_ALLOCATE_MEMORY
+            | ISC_REQ_STREAM
+            | ISC_REQ_MANUAL_CRED_VALIDATION
+        )
+
+        # Output buffer for any token ISC might produce
+        out_bufs = _make_sec_buffer_array(2)
+        out_bufs[0].cbBuffer = 0
+        out_bufs[0].BufferType = SECBUFFER_TOKEN
+        out_bufs[0].pvBuffer = None
+        out_bufs[1].cbBuffer = 0
+        out_bufs[1].BufferType = SECBUFFER_ALERT
+        out_bufs[1].pvBuffer = None
+        out_desc = _make_sec_buffer_desc(out_bufs)
+
+        ctx_attrs = wintypes.ULONG(0)
+        ts = TimeStamp()
+
+        # Call ISC with empty input to acknowledge the post-handshake message.
+        # Do NOT pass the EXTRA data — it's application data, not a handshake token.
+        status = int(_secur32.InitializeSecurityContextW(
+            ctypes.byref(self._cred),
+            ctypes.byref(self._ctx),   # existing context
+            self._server_name,
+            isc_flags,
+            0,
+            SECURITY_NATIVE_DREP,
+            None,                      # pInput = NULL (empty input)
+            0,
+            ctypes.byref(self._ctx),   # phNewContext (same as phContext)
+            ctypes.byref(out_desc),
+            ctypes.byref(ctx_attrs),
+            ctypes.byref(ts),
+        ))
+        logger.debug("ISC (renegotiate): 0x%08X", status)
+
+        # Send any output token produced by SChannel
+        if out_bufs[0].cbBuffer > 0 and out_bufs[0].pvBuffer:
+            token = ctypes.string_at(out_bufs[0].pvBuffer, out_bufs[0].cbBuffer)
+            _secur32.FreeContextBuffer(out_bufs[0].pvBuffer)
+            out_bufs[0].pvBuffer = None
+            self._sock.sendall(token)
+            logger.debug("ISC (renegotiate): sent %d-byte output token", len(token))
+
+        if status == SEC_E_OK:
+            logger.debug("ISC (renegotiate): complete, %d bytes EXTRA to decrypt",
+                         len(extra_data))
+            # Save the EXTRA data for the caller to decrypt
+            self._recv_buf = extra_data
+            return
+        elif status == SEC_I_CONTINUE_NEEDED:
+            # For TLS 1.3 this shouldn't happen, but handle it gracefully.
+            # The token was already sent above; now read more data and loop.
+            logger.debug("ISC (renegotiate): SEC_I_CONTINUE_NEEDED, reading more data")
+            raise SchannelError(
+                "Unexpected SEC_I_CONTINUE_NEEDED during TLS 1.3 renegotiation",
+                status,
+            )
+        else:
+            logger.error("ISC (renegotiate) failed: 0x%08X", status)
+            raise SchannelError("Renegotiation failed", status)
+
     def _query_stream_sizes(self) -> None:  # pragma: no cover
         sizes = SecPkgContext_StreamSizes()
         status = int(_secur32.QueryContextAttributesW(
@@ -597,23 +683,30 @@ class SchannelSocket:
                     pass  # fall through to read more data
                 elif status == SEC_I_RENEGOTIATE:
                     # TLS 1.3 post-handshake message (NewSessionTicket or
-                    # KeyUpdate).  SChannel has already processed it
-                    # internally.  Save any EXTRA data and loop back to
-                    # call DecryptMessage again -- no InitializeSecurityContext
-                    # call is needed for TLS 1.3.
-                    logger.debug("DecryptMessage: SEC_I_RENEGOTIATE (TLS 1.3 post-handshake)")
+                    # KeyUpdate).  Extract EXTRA data (remaining encrypted
+                    # application data), then call ISC with empty input to
+                    # acknowledge the renegotiation notification.
                     extra = b""
                     for i in range(4):
-                        if dec_bufs[i].BufferType == SECBUFFER_EXTRA and dec_bufs[i].cbBuffer:
+                        buftype = dec_bufs[i].BufferType
+                        bufsz = dec_bufs[i].cbBuffer
+                        logger.debug("  buf[%d]: type=%d size=%d", i, buftype, bufsz)
+                        if buftype == SECBUFFER_EXTRA and bufsz:
                             extra = ctypes.string_at(
-                                dec_bufs[i].pvBuffer, dec_bufs[i].cbBuffer
+                                dec_bufs[i].pvBuffer, bufsz
                             )
-                    self._recv_buf = extra
-                    # Continue the while loop -- do NOT return to caller.
-                    # If extra is non-empty, we'll try DecryptMessage again
-                    # immediately.  If empty, we'll fall through to read
-                    # more data from the socket.
+                    logger.debug("DecryptMessage: SEC_I_RENEGOTIATE, extra=%d bytes",
+                                 len(extra))
+                    self._recv_buf = b""
+                    self._handle_renegotiate(extra)
+                    # _handle_renegotiate saved extra in self._recv_buf.
+                    # Continue the loop to decrypt it.
                     continue
+                elif status == SEC_E_CONTEXT_EXPIRED:
+                    # Server sent close_notify — graceful TLS shutdown.
+                    logger.debug("DecryptMessage: SEC_E_CONTEXT_EXPIRED (close_notify)")
+                    self._recv_buf = b""
+                    return
                 else:
                     logger.error("DecryptMessage failed: 0x%08X", status)
                     raise SchannelError("DecryptMessage failed", status)
