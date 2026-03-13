@@ -695,9 +695,19 @@ class SchannelSocket:
                     #   byte 0:   content type
                     #   bytes 1-2: protocol version
                     #   bytes 3-4: payload length (big-endian)
+                    # DecryptMessage only returns SEC_I_RENEGOTIATE after
+                    # successfully processing a complete TLS record, so
+                    # total_size >= 5 + payload_len is guaranteed.
                     if total_size >= 5:
                         record_payload_len = (original_data[3] << 8) | original_data[4]
-                        consumed = min(5 + record_payload_len, total_size)
+                        consumed = 5 + record_payload_len
+                        if consumed > total_size:
+                            logger.warning(
+                                "TLS header payload %d exceeds buffer %d; "
+                                "treating entire buffer as consumed",
+                                consumed, total_size,
+                            )
+                            consumed = total_size
                     else:
                         consumed = total_size
 
