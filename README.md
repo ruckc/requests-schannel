@@ -1,7 +1,7 @@
 # requests-schannel
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 [![OS: Windows](https://img.shields.io/badge/os-Windows-0078D6.svg)](https://www.microsoft.com/windows)
 
 Windows SChannel TLS/mTLS provider for [requests](https://docs.python-requests.org/) and [websockets](https://websockets.readthedocs.io/) — smartcard and PKI authentication via native Windows APIs.
@@ -53,7 +53,7 @@ pip install requests-schannel[sspilib]
 pip install requests-schannel[all]
 ```
 
-> **Note:** This library requires **Windows** and **Python 3.13+**.
+> **Note:** This library requires **Windows** and **Python 3.12+**.
 
 ## Quick Start
 

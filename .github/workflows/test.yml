@@ -65,9 +65,9 @@ jobs:
             -NotAfter (Get-Date).AddYears(1) `
             -TextExtension @("2.5.29.19={text}cA=true")
 
-          # Export Root CA to trusted store
+          # Export Root CA to trusted store (certutil -f avoids the GUI confirmation dialog)
           $rootCert = Export-Certificate -Cert $rootCA -FilePath "$env:RUNNER_TEMP\rootca.cer"
-          Import-Certificate -FilePath "$env:RUNNER_TEMP\rootca.cer" -CertStoreLocation "Cert:\CurrentUser\Root"
+          certutil -user -addstore -f Root "$env:RUNNER_TEMP\rootca.cer"
 
           # Create Server cert
           $serverCert = New-SelfSignedCertificate `
