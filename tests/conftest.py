@@ -310,11 +310,11 @@ def smartcard_certs(tls_certs: TestCerts) -> Generator[InstalledTestCerts]:
     # Import library module to ensure crypt32 prototypes are set
     from requests_schannel.backends.ctypes_backend import PVOID, _crypt32
 
-    class _CRYPT_DATA_BLOB(ctypes.Structure):
+    class CryptDataBlob(ctypes.Structure):  # noqa: N801 — matches Windows API name
         _fields_ = [("cbData", wt.DWORD), ("pbData", PVOID)]
 
     pfx_data = tls_certs.client_pfx_path.read_bytes()
-    blob = _CRYPT_DATA_BLOB()
+    blob = CryptDataBlob()
     blob.cbData = len(pfx_data)
     buf = (ctypes.c_byte * len(pfx_data))(*pfx_data)
     blob.pbData = ctypes.cast(buf, PVOID)

@@ -16,7 +16,7 @@ the package is absent.
 from __future__ import annotations
 
 try:
-    import sspilib  # type: ignore[import-not-found]  # noqa: F401  — validate availability
+    import sspilib  # noqa: F401  — validate availability
 except ImportError as e:
     raise ImportError(
         "sspilib is required for the sspilib backend. "

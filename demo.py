@@ -45,7 +45,8 @@ class DemoApp(tk.Tk):
 
         # Status bar
         self._status_var = tk.StringVar(value="Ready")
-        status_bar = ttk.Label(self, textvariable=self._status_var, relief=tk.SUNKEN, anchor=tk.W, padding=4)
+        status_bar = ttk.Label(self, textvariable=self._status_var, relief=tk.SUNKEN,
+                               anchor=tk.W, padding=4)
         status_bar.pack(fill=tk.X, side=tk.BOTTOM)
 
         # Response headers + body in a PanedWindow
@@ -54,13 +55,15 @@ class DemoApp(tk.Tk):
 
         # Headers section
         hdr_frame = ttk.LabelFrame(pane, text="Response Headers", padding=4)
-        self._headers_text = scrolledtext.ScrolledText(hdr_frame, height=8, state=tk.DISABLED, wrap=tk.WORD)
+        self._headers_text = scrolledtext.ScrolledText(hdr_frame, height=8, state=tk.DISABLED,
+                                                       wrap=tk.WORD)
         self._headers_text.pack(fill=tk.BOTH, expand=True)
         pane.add(hdr_frame, weight=1)
 
         # Body section
         body_frame = ttk.LabelFrame(pane, text="Response Body", padding=4)
-        self._body_text = scrolledtext.ScrolledText(body_frame, height=16, state=tk.DISABLED, wrap=tk.WORD)
+        self._body_text = scrolledtext.ScrolledText(body_frame, height=16, state=tk.DISABLED,
+                                                    wrap=tk.WORD)
         self._body_text.pack(fill=tk.BOTH, expand=True)
         pane.add(body_frame, weight=3)
 
