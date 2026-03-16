@@ -146,7 +146,7 @@ jobs:
 
       - name: Run unit tests
         run: >
-          uv run python -m pytest tests/unit/
+          uv run -p ${{ matrix.python-version }} pytest tests/unit/
           --cov=src/requests_schannel
           --cov-report=xml:coverage-unit.xml
           --cov-report=term-missing
