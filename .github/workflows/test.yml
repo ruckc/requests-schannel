@@ -115,6 +115,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           version: "latest"
+          cache-suffix: py${{ matrix.python-version }}
 
       - name: Install dependencies
         run: uv sync --python ${{ matrix.python-version }} --all-extras
