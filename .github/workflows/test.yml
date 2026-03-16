@@ -119,7 +119,7 @@ jobs:
         run: uv sync --python ${{ matrix.python-version }} --all-extras
 
       - name: Download certificates
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: test-certificates
           path: ${{ runner.temp }}/certs/
@@ -146,7 +146,7 @@ jobs:
 
       - name: Run unit tests
         run: >
-          uv run pytest tests/unit/
+          uv run python -m pytest tests/unit/
           --cov=src/requests_schannel
           --cov-report=xml:coverage-unit.xml
           --cov-report=term-missing
@@ -154,7 +154,7 @@ jobs:
 
       - name: Run integration tests
         run: >
-          uv run pytest tests/integration/ -m "not network"
+          uv run python -m pytest tests/integration/ -m "not network"
           --cov=src/requests_schannel
           --cov-append
           --cov-report=xml:coverage-integration.xml
@@ -163,7 +163,7 @@ jobs:
 
       - name: Run compatibility tests
         run: >
-          uv run pytest tests/compat/ -m "not network"
+          uv run python -m pytest tests/compat/ -m "not network"
           --cov=src/requests_schannel
           --cov-append
           --cov-report=xml:coverage-compat.xml
