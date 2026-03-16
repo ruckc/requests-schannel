@@ -4,23 +4,36 @@ on:
   push:
     tags:
       - "v*"
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
 
 permissions:
   id-token: write  # Required for PyPI trusted publisher (OIDC)
   contents: read
 
 jobs:
-  test:
-    name: Test before publish
-    uses: ./.github/workflows/test.yml
-
   publish:
     name: Publish to PyPI
-    needs: test
+    if: >-
+      (github.event_name == 'push') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     environment: release
     steps:
+      - name: Get tag for workflow_run trigger
+        if: github.event_name == 'workflow_run'
+        id: get-tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Find the latest v* tag created by the Release workflow
+          TAG=$(gh api repos/${{ github.repository }}/tags --jq '.[0].name' -q 'map(select(.name | startswith("v")))[0].name')
+          echo "ref=refs/tags/$TAG" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.get-tag.outputs.ref || github.ref }}
 
       - uses: astral-sh/setup-uv@v7
         with:
