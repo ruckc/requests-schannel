@@ -83,9 +83,7 @@ class TestSchannelSocketBuffering:
             flags=0,
         )
         # Simulate connected state
-        mock_backend.handshake_step.return_value = HandshakeResult(
-            output_token=b"", complete=True
-        )
+        mock_backend.handshake_step.return_value = HandshakeResult(output_token=b"", complete=True)
         sock.do_handshake()
 
         # Inject plaintext buffer directly
@@ -112,9 +110,7 @@ class TestSchannelSocketBuffering:
             server_hostname="host",
             flags=0,
         )
-        mock_backend.handshake_step.return_value = HandshakeResult(
-            output_token=b"", complete=True
-        )
+        mock_backend.handshake_step.return_value = HandshakeResult(output_token=b"", complete=True)
         sock.do_handshake()
 
         sock._plaintext_buffer = b"Hello"

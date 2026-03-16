@@ -185,9 +185,7 @@ class SchannelContext:
     ) -> None:
         """No-op: server verification uses the Windows trust store."""
 
-    def load_default_certs(
-        self, purpose: ssl.Purpose = ssl.Purpose.SERVER_AUTH
-    ) -> None:
+    def load_default_certs(self, purpose: ssl.Purpose = ssl.Purpose.SERVER_AUTH) -> None:
         """No-op: Windows trust store is always used."""
 
     def set_ciphers(self, ciphers: str) -> None:
@@ -233,6 +231,7 @@ class SchannelContext:
         # If manual validation is enabled, add the flag
         if self._verify_mode == ssl.CERT_NONE:
             from ._constants import ISC_REQ_MANUAL_CRED_VALIDATION
+
             flags |= ISC_REQ_MANUAL_CRED_VALIDATION
 
         schannel_sock = SchannelSocket(

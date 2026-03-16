@@ -21,6 +21,7 @@ from requests_schannel.socket import SchannelSocket
 @pytest.fixture
 def raw_socket() -> MagicMock:
     import socket
+
     sock = MagicMock(spec=socket.socket)
     sock.recv.return_value = b"server_response"
     return sock
@@ -43,9 +44,7 @@ class TestHandshakeStateMachine:
 
     def test_single_step_handshake(self, mock_backend: MagicMock, raw_socket: MagicMock) -> None:
         """Handshake completes in one step (unusual but valid)."""
-        mock_backend.handshake_step.return_value = HandshakeResult(
-            output_token=b"", complete=True
-        )
+        mock_backend.handshake_step.return_value = HandshakeResult(output_token=b"", complete=True)
 
         sock = SchannelSocket(
             sock=raw_socket,
@@ -163,9 +162,7 @@ class TestHandshakeStateMachine:
 
     def test_correct_flags_passed(self, mock_backend: MagicMock, raw_socket: MagicMock) -> None:
         """Verify ISC_REQ flags are passed to create_context."""
-        mock_backend.handshake_step.return_value = HandshakeResult(
-            output_token=b"", complete=True
-        )
+        mock_backend.handshake_step.return_value = HandshakeResult(output_token=b"", complete=True)
 
         sock = SchannelSocket(
             sock=raw_socket,
@@ -204,9 +201,7 @@ class TestHandshakeStateMachine:
         self, mock_backend: MagicMock, raw_socket: MagicMock
     ) -> None:
         """Empty output tokens should not be sent to the server."""
-        mock_backend.handshake_step.return_value = HandshakeResult(
-            output_token=b"", complete=True
-        )
+        mock_backend.handshake_step.return_value = HandshakeResult(output_token=b"", complete=True)
 
         sock = SchannelSocket(
             sock=raw_socket,

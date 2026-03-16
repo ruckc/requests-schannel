@@ -15,9 +15,7 @@ pytestmark = [
 class TestUrllib3Direct:
     """Test urllib3 directly with SchannelContext as ssl_context."""
 
-    def test_poolmanager_with_schannel_context(
-        self, tls_test_server: tuple[str, int]
-    ) -> None:
+    def test_poolmanager_with_schannel_context(self, tls_test_server: tuple[str, int]) -> None:
         """Use SchannelContext directly with urllib3.PoolManager."""
         import ssl
 

@@ -27,6 +27,7 @@ class TestTlsHandshake:
         ctx = SchannelContext(backend=backend_name)
         # Disable verification since we're using self-signed certs
         import ssl
+
         ctx.verify_mode = ssl.CERT_NONE
 
         raw_sock = socket.create_connection((host, port), timeout=10)
@@ -61,9 +62,7 @@ class TestTlsHandshake:
             raw_sock.close()
             raise
 
-    def test_cipher_info(
-        self, tls_test_server: tuple[str, int], backend_name: str
-    ) -> None:
+    def test_cipher_info(self, tls_test_server: tuple[str, int], backend_name: str) -> None:
         """Verify cipher info is available after handshake."""
         import socket
         import ssl
@@ -86,9 +85,7 @@ class TestTlsHandshake:
             raw_sock.close()
             raise
 
-    def test_peer_certificate(
-        self, tls_test_server: tuple[str, int], backend_name: str
-    ) -> None:
+    def test_peer_certificate(self, tls_test_server: tuple[str, int], backend_name: str) -> None:
         """Verify peer certificate is available."""
         import socket
         import ssl
@@ -110,9 +107,7 @@ class TestTlsHandshake:
             raw_sock.close()
             raise
 
-    def test_send_recv(
-        self, tls_test_server: tuple[str, int], backend_name: str
-    ) -> None:
+    def test_send_recv(self, tls_test_server: tuple[str, int], backend_name: str) -> None:
         """Send an HTTP request and receive a response over TLS."""
         import socket
         import ssl

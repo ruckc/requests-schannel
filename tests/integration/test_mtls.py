@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import sys
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from tests.conftest import InstalledTestCerts
 
 pytestmark = [
     pytest.mark.integration,
@@ -15,8 +19,12 @@ pytestmark = [
 class TestMtlsConnection:
     """Test mTLS with client certificates from the Windows store."""
 
+    @pytest.mark.smartcard
     def test_connect_with_thumbprint(
-        self, tls_test_server: tuple[str, int], tls_certs: object, backend_name: str
+        self,
+        tls_test_server: tuple[str, int],
+        backend_name: str,
+        smartcard_certs: InstalledTestCerts,
     ) -> None:
         """Connect with client cert selected by thumbprint."""
         import socket
@@ -27,20 +35,19 @@ class TestMtlsConnection:
         host, port = tls_test_server
         ctx = SchannelContext(backend=backend_name)
         ctx.verify_mode = ssl.CERT_NONE
-        ctx.client_cert_thumbprint = tls_certs.client_thumbprint  # type: ignore[attr-defined]
+        ctx.client_cert_thumbprint = smartcard_certs.client_thumbprint
 
         raw_sock = socket.create_connection((host, port), timeout=10)
-        try:
-            tls_sock = ctx.wrap_socket(raw_sock, server_hostname="localhost")
-            # Connection should succeed
-            assert tls_sock.version() is not None
-            tls_sock.close()
-        except Exception:
-            raw_sock.close()
-            raise
+        tls_sock = ctx.wrap_socket(raw_sock, server_hostname="localhost")
+        assert tls_sock.version() is not None
+        tls_sock.close()
 
+    @pytest.mark.smartcard
     def test_connect_with_subject(
-        self, tls_test_server: tuple[str, int], tls_certs: object, backend_name: str
+        self,
+        tls_test_server: tuple[str, int],
+        backend_name: str,
+        smartcard_certs: InstalledTestCerts,
     ) -> None:
         """Connect with client cert selected by subject name."""
         import socket
@@ -51,16 +58,12 @@ class TestMtlsConnection:
         host, port = tls_test_server
         ctx = SchannelContext(backend=backend_name)
         ctx.verify_mode = ssl.CERT_NONE
-        ctx.client_cert_subject = "Test Client"
+        ctx.client_cert_subject = smartcard_certs.client_subject
 
         raw_sock = socket.create_connection((host, port), timeout=10)
-        try:
-            tls_sock = ctx.wrap_socket(raw_sock, server_hostname="localhost")
-            assert tls_sock.version() is not None
-            tls_sock.close()
-        except Exception:
-            raw_sock.close()
-            raise
+        tls_sock = ctx.wrap_socket(raw_sock, server_hostname="localhost")
+        assert tls_sock.version() is not None
+        tls_sock.close()
 
     def test_wrong_cert_thumbprint(
         self, tls_test_server: tuple[str, int], backend_name: str

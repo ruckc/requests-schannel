@@ -46,9 +46,7 @@ class TestHandshake:
         self, schannel_socket: SchannelSocket, mock_backend: MagicMock
     ) -> None:
         """Backend returns complete=True on first step."""
-        mock_backend.handshake_step.return_value = HandshakeResult(
-            output_token=b"", complete=True
-        )
+        mock_backend.handshake_step.return_value = HandshakeResult(output_token=b"", complete=True)
         schannel_socket.do_handshake()
         assert mock_backend.create_context.called
 
@@ -70,9 +68,7 @@ class TestHandshake:
         self, schannel_socket: SchannelSocket, mock_backend: MagicMock
     ) -> None:
         """Calling do_handshake twice doesn't re-handshake."""
-        mock_backend.handshake_step.return_value = HandshakeResult(
-            output_token=b"", complete=True
-        )
+        mock_backend.handshake_step.return_value = HandshakeResult(output_token=b"", complete=True)
         schannel_socket.do_handshake()
         schannel_socket.do_handshake()
         assert mock_backend.create_context.call_count == 1
@@ -96,16 +92,13 @@ class TestHandshake:
 class TestRecv:
     """Test receive/decrypt operations."""
 
-    def test_recv_before_handshake_raises(self, schannel_socket: SchannelSocket) -> None:
-        with pytest.raises(SchannelError, match="handshake"):
-            schannel_socket.recv()
+    def test_recv_before_handshake_returns_eof(self, schannel_socket: SchannelSocket) -> None:
+        assert schannel_socket.recv() == b""
 
     def test_recv_returns_decrypted_data(
         self, schannel_socket: SchannelSocket, mock_backend: MagicMock, raw_socket: MagicMock
     ) -> None:
-        mock_backend.handshake_step.return_value = HandshakeResult(
-            output_token=b"", complete=True
-        )
+        mock_backend.handshake_step.return_value = HandshakeResult(output_token=b"", complete=True)
         schannel_socket.do_handshake()
 
         raw_socket.recv.return_value = b"encrypted_data"
@@ -118,9 +111,7 @@ class TestRecv:
         self, schannel_socket: SchannelSocket, mock_backend: MagicMock, raw_socket: MagicMock
     ) -> None:
         """When decrypt returns more than requested, excess is buffered."""
-        mock_backend.handshake_step.return_value = HandshakeResult(
-            output_token=b"", complete=True
-        )
+        mock_backend.handshake_step.return_value = HandshakeResult(output_token=b"", complete=True)
         schannel_socket.do_handshake()
 
         raw_socket.recv.return_value = b"encrypted"
@@ -134,17 +125,14 @@ class TestRecv:
         result2 = schannel_socket.recv(5)
         assert result2 == b"56789"
 
-    def test_recv_after_close_raises(self, schannel_socket: SchannelSocket) -> None:
+    def test_recv_after_close_returns_eof(self, schannel_socket: SchannelSocket) -> None:
         schannel_socket._closed = True
-        with pytest.raises(SchannelError, match="closed"):
-            schannel_socket.recv()
+        assert schannel_socket.recv() == b""
 
     def test_read_aliases_recv(
         self, schannel_socket: SchannelSocket, mock_backend: MagicMock, raw_socket: MagicMock
     ) -> None:
-        mock_backend.handshake_step.return_value = HandshakeResult(
-            output_token=b"", complete=True
-        )
+        mock_backend.handshake_step.return_value = HandshakeResult(output_token=b"", complete=True)
         schannel_socket.do_handshake()
         raw_socket.recv.return_value = b"enc"
         mock_backend.decrypt.return_value = (b"data", b"")
@@ -163,9 +151,7 @@ class TestSend:
     def test_send_encrypts_and_sends(
         self, schannel_socket: SchannelSocket, mock_backend: MagicMock, raw_socket: MagicMock
     ) -> None:
-        mock_backend.handshake_step.return_value = HandshakeResult(
-            output_token=b"", complete=True
-        )
+        mock_backend.handshake_step.return_value = HandshakeResult(output_token=b"", complete=True)
         schannel_socket.do_handshake()
 
         mock_backend.encrypt.side_effect = None
@@ -177,9 +163,7 @@ class TestSend:
     def test_write_aliases_send(
         self, schannel_socket: SchannelSocket, mock_backend: MagicMock, raw_socket: MagicMock
     ) -> None:
-        mock_backend.handshake_step.return_value = HandshakeResult(
-            output_token=b"", complete=True
-        )
+        mock_backend.handshake_step.return_value = HandshakeResult(output_token=b"", complete=True)
         schannel_socket.do_handshake()
         mock_backend.encrypt.return_value = b"enc"
 
@@ -188,9 +172,7 @@ class TestSend:
     def test_sendall(
         self, schannel_socket: SchannelSocket, mock_backend: MagicMock, raw_socket: MagicMock
     ) -> None:
-        mock_backend.handshake_step.return_value = HandshakeResult(
-            output_token=b"", complete=True
-        )
+        mock_backend.handshake_step.return_value = HandshakeResult(output_token=b"", complete=True)
         schannel_socket.do_handshake()
         mock_backend.encrypt.return_value = b"enc"
 
@@ -203,9 +185,7 @@ class TestMetadata:
     """Test TLS metadata methods."""
 
     def _handshake(self, sock: SchannelSocket, backend: MagicMock) -> None:
-        backend.handshake_step.return_value = HandshakeResult(
-            output_token=b"", complete=True
-        )
+        backend.handshake_step.return_value = HandshakeResult(output_token=b"", complete=True)
         sock.do_handshake()
 
     def test_selected_alpn_protocol(
@@ -218,9 +198,7 @@ class TestMetadata:
     def test_alpn_none_before_handshake(self, schannel_socket: SchannelSocket) -> None:
         assert schannel_socket.selected_alpn_protocol() is None
 
-    def test_cipher(
-        self, schannel_socket: SchannelSocket, mock_backend: MagicMock
-    ) -> None:
+    def test_cipher(self, schannel_socket: SchannelSocket, mock_backend: MagicMock) -> None:
         self._handshake(schannel_socket, mock_backend)
         result = schannel_socket.cipher()
         assert result is not None
@@ -228,9 +206,7 @@ class TestMetadata:
         assert result[1] == "TLSv1.2"
         assert result[2] == 256
 
-    def test_version(
-        self, schannel_socket: SchannelSocket, mock_backend: MagicMock
-    ) -> None:
+    def test_version(self, schannel_socket: SchannelSocket, mock_backend: MagicMock) -> None:
         self._handshake(schannel_socket, mock_backend)
         assert schannel_socket.version() == "TLSv1.2"
 
@@ -263,17 +239,13 @@ class TestLifecycle:
     def test_close(
         self, schannel_socket: SchannelSocket, mock_backend: MagicMock, raw_socket: MagicMock
     ) -> None:
-        mock_backend.handshake_step.return_value = HandshakeResult(
-            output_token=b"", complete=True
-        )
+        mock_backend.handshake_step.return_value = HandshakeResult(output_token=b"", complete=True)
         schannel_socket.do_handshake()
         schannel_socket.close()
         assert schannel_socket._closed
         raw_socket.close.assert_called_once()
 
-    def test_close_idempotent(
-        self, schannel_socket: SchannelSocket, raw_socket: MagicMock
-    ) -> None:
+    def test_close_idempotent(self, schannel_socket: SchannelSocket, raw_socket: MagicMock) -> None:
         schannel_socket.close()
         schannel_socket.close()
         # Should not raise
@@ -281,16 +253,12 @@ class TestLifecycle:
     def test_unwrap_returns_raw_socket(
         self, schannel_socket: SchannelSocket, mock_backend: MagicMock, raw_socket: MagicMock
     ) -> None:
-        mock_backend.handshake_step.return_value = HandshakeResult(
-            output_token=b"", complete=True
-        )
+        mock_backend.handshake_step.return_value = HandshakeResult(output_token=b"", complete=True)
         schannel_socket.do_handshake()
         result = schannel_socket.unwrap()
         assert result is raw_socket
 
-    def test_context_manager(
-        self, schannel_socket: SchannelSocket, raw_socket: MagicMock
-    ) -> None:
+    def test_context_manager(self, schannel_socket: SchannelSocket, raw_socket: MagicMock) -> None:
         with schannel_socket:
             pass
         assert schannel_socket._closed
@@ -311,9 +279,7 @@ class TestMakefile:
     def test_makefile_binary_read(
         self, schannel_socket: SchannelSocket, mock_backend: MagicMock, raw_socket: MagicMock
     ) -> None:
-        mock_backend.handshake_step.return_value = HandshakeResult(
-            output_token=b"", complete=True
-        )
+        mock_backend.handshake_step.return_value = HandshakeResult(output_token=b"", complete=True)
         schannel_socket.do_handshake()
 
         raw_socket.recv.return_value = b"encrypted"
@@ -326,12 +292,11 @@ class TestMakefile:
     def test_makefile_returns_buffered(
         self, schannel_socket: SchannelSocket, mock_backend: MagicMock
     ) -> None:
-        mock_backend.handshake_step.return_value = HandshakeResult(
-            output_token=b"", complete=True
-        )
+        mock_backend.handshake_step.return_value = HandshakeResult(output_token=b"", complete=True)
         schannel_socket.do_handshake()
 
         f = schannel_socket.makefile("rb")
         import io
+
         assert isinstance(f, io.BufferedReader)
         f.close()

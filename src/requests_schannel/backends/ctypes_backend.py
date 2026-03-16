@@ -210,6 +210,23 @@ _crypt32.CertFreeCertificateContext.argtypes = [PVOID]
 _crypt32.CertGetNameStringW.restype = wt.DWORD
 _crypt32.CryptHashCertificate.restype = wt.BOOL
 
+# PFX / cert manipulation
+_crypt32.PFXImportCertStore.restype = PVOID  # HCERTSTORE
+_crypt32.PFXImportCertStore.argtypes = [PVOID, ctypes.c_wchar_p, wt.DWORD]
+_crypt32.CertAddCertificateContextToStore.restype = wt.BOOL
+_crypt32.CertAddCertificateContextToStore.argtypes = [
+    PVOID,  # hCertStore
+    PVOID,  # pCertContext
+    wt.DWORD,  # dwAddDisposition
+    ctypes.POINTER(PVOID),  # ppStoreContext (optional out)
+]
+_crypt32.CertDeleteCertificateFromStore.restype = wt.BOOL
+_crypt32.CertDeleteCertificateFromStore.argtypes = [PVOID]  # pCertContext
+_crypt32.CertDuplicateCertificateContext.restype = PVOID  # PCCERT_CONTEXT
+_crypt32.CertDuplicateCertificateContext.argtypes = [PVOID]
+_crypt32.CertCreateCertificateContext.restype = PVOID  # PCCERT_CONTEXT
+_crypt32.CertCreateCertificateContext.argtypes = [wt.DWORD, ctypes.c_char_p, wt.DWORD]
+
 
 def _check_sspi(status: int, context: str = "") -> None:
     """Raise on SSPI error codes (negative values are errors)."""
@@ -240,11 +257,14 @@ def _build_alpn_buffer(protocols: list[str]) -> bytes:
         proto_entries += struct.pack("B", len(encoded)) + encoded
 
     # Protocol list struct: ProtoNegoExt (DWORD) + ProtocolListSize (WORD) + entries
-    inner = struct.pack(
-        "<IH",
-        SEC_APPLICATION_PROTOCOL_NEGOTIATION_EXT_ALPN,
-        len(proto_entries),
-    ) + proto_entries
+    inner = (
+        struct.pack(
+            "<IH",
+            SEC_APPLICATION_PROTOCOL_NEGOTIATION_EXT_ALPN,
+            len(proto_entries),
+        )
+        + proto_entries
+    )
 
     # Outer: ProtocolListsSize (DWORD) + inner
     return struct.pack("<I", len(inner)) + inner
@@ -286,9 +306,7 @@ class CtypesCertStore(CertStore):
             None,
         )
         if not cert:
-            raise CertificateNotFoundError(
-                f"Certificate with thumbprint '{thumbprint}' not found"
-            )
+            raise CertificateNotFoundError(f"Certificate with thumbprint '{thumbprint}' not found")
         return ctypes.cast(cert, PCERT_CONTEXT)
 
     def find_by_subject(self, store_handle: Any, subject: str) -> Any:
@@ -330,21 +348,29 @@ class CtypesCertStore(CertStore):
         # Get DER-encoded certificate
         der_size = cert_ctx.cbCertEncoded
         der_bytes = bytes(
-            ctypes.cast(
-                cert_ctx.pbCertEncoded, ctypes.POINTER(ctypes.c_byte * der_size)
-            ).contents
+            ctypes.cast(cert_ctx.pbCertEncoded, ctypes.POINTER(ctypes.c_byte * der_size)).contents
         )
 
         # Get subject name
         subject_size = _crypt32.CertGetNameStringW(
-            cert_context, 1, 0, None, None, 0  # CERT_NAME_SIMPLE_DISPLAY_TYPE
+            cert_context,
+            1,
+            0,
+            None,
+            None,
+            0,  # CERT_NAME_SIMPLE_DISPLAY_TYPE
         )
         subject_buf = ctypes.create_unicode_buffer(subject_size)
         _crypt32.CertGetNameStringW(cert_context, 1, 0, None, subject_buf, subject_size)
 
         # Get issuer name
         issuer_size = _crypt32.CertGetNameStringW(
-            cert_context, 1, 1, None, None, 0  # flags=1 = CERT_NAME_ISSUER_FLAG
+            cert_context,
+            1,
+            1,
+            None,
+            None,
+            0,  # flags=1 = CERT_NAME_ISSUER_FLAG
         )
         issuer_buf = ctypes.create_unicode_buffer(issuer_size)
         _crypt32.CertGetNameStringW(cert_context, 1, 1, None, issuer_buf, issuer_size)
@@ -353,13 +379,37 @@ class CtypesCertStore(CertStore):
         hash_size = wt.DWORD(20)
         hash_buf = (ctypes.c_byte * 20)()
         _crypt32.CryptHashCertificate(
-            0, 0x00008003, 0,  # CALG_SHA1
+            0,
+            0x00008003,
+            0,  # CALG_SHA1
             cert_ctx.pbCertEncoded,
             cert_ctx.cbCertEncoded,
             hash_buf,
             ctypes.byref(hash_size),
         )
         thumbprint = bytes(hash_buf).hex().upper()
+
+        # Check for private key availability
+        _hprov = ctypes.c_void_p(0)
+        _keyspec = wt.DWORD(0)
+        _caller_free = wt.BOOL(0)
+        CRYPT_ACQUIRE_SILENT_FLAG = 0x00000040
+        has_key = bool(
+            _crypt32.CryptAcquireCertificatePrivateKey(
+                cert_context,
+                CRYPT_ACQUIRE_SILENT_FLAG,
+                None,
+                ctypes.byref(_hprov),
+                ctypes.byref(_keyspec),
+                ctypes.byref(_caller_free),
+            )
+        )
+        if has_key and _caller_free.value and _hprov.value:
+            # Release the handle if the caller is responsible
+            try:
+                ctypes.windll.advapi32.CryptReleaseContext(_hprov, 0)
+            except Exception:
+                pass
 
         return CertInfo(
             thumbprint=thumbprint,
@@ -368,11 +418,7 @@ class CtypesCertStore(CertStore):
             friendly_name="",  # Requires property lookup; simplified
             not_before=0.0,
             not_after=0.0,
-            has_private_key=bool(
-                _crypt32.CryptAcquireCertificatePrivateKey(
-                    cert_context, 0x00000010, None, None, None, None  # CRYPT_ACQUIRE_SILENT_FLAG
-                )
-            ),
+            has_private_key=has_key,
             serial_number="",
             der_encoded=der_bytes,
         )
@@ -530,9 +576,7 @@ class CtypesBackend(SchannelBackend):
         unsigned_status = status & 0xFFFFFFFF
 
         if unsigned_status == SEC_E_INCOMPLETE_MESSAGE:
-            return HandshakeResult(
-                output_token=b"", complete=False, extra_data=in_token or b""
-            )
+            return HandshakeResult(output_token=b"", complete=False, extra_data=in_token or b"")
 
         if status < 0:
             raise sspi_error(unsigned_status, "InitializeSecurityContext")
@@ -554,7 +598,7 @@ class CtypesBackend(SchannelBackend):
                 if in_bufs[i].BufferType == SECBUFFER_EXTRA and in_bufs[i].cbBuffer > 0:
                     # Extra data is the tail of the original input
                     if in_token is not None:
-                        extra_data = in_token[-in_bufs[i].cbBuffer:]
+                        extra_data = in_token[-in_bufs[i].cbBuffer :]
                     break
 
         complete = unsigned_status == SEC_E_OK
@@ -564,9 +608,7 @@ class CtypesBackend(SchannelBackend):
             _secur32.CompleteAuthToken(ctypes.byref(context.raw), ctypes.byref(out_buf_desc))
             complete = unsigned_status == SEC_I_COMPLETE_NEEDED
 
-        return HandshakeResult(
-            output_token=out_token, complete=complete, extra_data=extra_data
-        )
+        return HandshakeResult(output_token=out_token, complete=complete, extra_data=extra_data)
 
     def encrypt(self, context: SecurityContext, plaintext: bytes) -> bytes:
         sizes = self.get_stream_sizes(context)
@@ -598,16 +640,26 @@ class CtypesBackend(SchannelBackend):
         buf_desc.cBuffers = 4
         buf_desc.pBuffers = ctypes.cast(bufs, ctypes.POINTER(_SecBuffer))
 
-        status = _secur32.EncryptMessage(
-            ctypes.byref(context.raw), 0, ctypes.byref(buf_desc), 0
-        )
+        status = _secur32.EncryptMessage(ctypes.byref(context.raw), 0, ctypes.byref(buf_desc), 0)
         if status != 0:
             raise EncryptionError(f"EncryptMessage failed: 0x{status & 0xFFFFFFFF:08X}")
 
         return (
-            bytes(ctypes.cast(bufs[0].pvBuffer, ctypes.POINTER(ctypes.c_byte * bufs[0].cbBuffer)).contents)
-            + bytes(ctypes.cast(bufs[1].pvBuffer, ctypes.POINTER(ctypes.c_byte * bufs[1].cbBuffer)).contents)
-            + bytes(ctypes.cast(bufs[2].pvBuffer, ctypes.POINTER(ctypes.c_byte * bufs[2].cbBuffer)).contents)
+            bytes(
+                ctypes.cast(
+                    bufs[0].pvBuffer, ctypes.POINTER(ctypes.c_byte * bufs[0].cbBuffer)
+                ).contents
+            )
+            + bytes(
+                ctypes.cast(
+                    bufs[1].pvBuffer, ctypes.POINTER(ctypes.c_byte * bufs[1].cbBuffer)
+                ).contents
+            )
+            + bytes(
+                ctypes.cast(
+                    bufs[2].pvBuffer, ctypes.POINTER(ctypes.c_byte * bufs[2].cbBuffer)
+                ).contents
+            )
         )
 
     def decrypt(self, context: SecurityContext, ciphertext: bytes) -> tuple[bytes, bytes]:
@@ -628,9 +680,7 @@ class CtypesBackend(SchannelBackend):
         buf_desc.cBuffers = 4
         buf_desc.pBuffers = ctypes.cast(bufs, ctypes.POINTER(_SecBuffer))
 
-        status = _secur32.DecryptMessage(
-            ctypes.byref(context.raw), ctypes.byref(buf_desc), 0, None
-        )
+        status = _secur32.DecryptMessage(ctypes.byref(context.raw), ctypes.byref(buf_desc), 0, None)
 
         unsigned = status & 0xFFFFFFFF
 
@@ -659,7 +709,7 @@ class CtypesBackend(SchannelBackend):
                     ).contents
                 )
             elif bufs[i].BufferType == SECBUFFER_EXTRA and bufs[i].cbBuffer > 0:
-                extra = ciphertext[-bufs[i].cbBuffer:]
+                extra = ciphertext[-bufs[i].cbBuffer :]
 
         return plaintext, extra
 

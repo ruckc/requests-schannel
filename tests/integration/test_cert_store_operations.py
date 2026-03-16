@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import sys
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from tests.conftest import InstalledTestCerts
 
 pytestmark = [
     pytest.mark.integration,
@@ -37,16 +41,15 @@ class TestCertStoreOperations:
         finally:
             store.close(handle)
 
-    def test_find_by_thumbprint_with_test_cert(self, tls_certs: object) -> None:
-        """Find test client cert by thumbprint."""
+    @pytest.mark.smartcard
+    def test_find_by_thumbprint_with_test_cert(self, smartcard_certs: InstalledTestCerts) -> None:
+        """Find a cert by thumbprint."""
         from requests_schannel.backends import get_cert_store
 
         store = get_cert_store()
         handle = store.open("MY", machine=False)
         try:
-            cert = store.find_by_thumbprint(
-                handle, tls_certs.client_thumbprint  # type: ignore[attr-defined]
-            )
+            cert = store.find_by_thumbprint(handle, smartcard_certs.client_thumbprint)
             assert cert is not None
         finally:
             store.close(handle)
@@ -64,14 +67,15 @@ class TestCertStoreOperations:
         finally:
             store.close(handle)
 
-    def test_find_by_subject(self, tls_certs: object) -> None:
-        """Find test cert by subject."""
+    @pytest.mark.smartcard
+    def test_find_by_subject(self, smartcard_certs: InstalledTestCerts) -> None:
+        """Find a cert by subject."""
         from requests_schannel.backends import get_cert_store
 
         store = get_cert_store()
         handle = store.open("MY", machine=False)
         try:
-            cert = store.find_by_subject(handle, "Test Client")
+            cert = store.find_by_subject(handle, smartcard_certs.client_subject)
             assert cert is not None
         finally:
             store.close(handle)

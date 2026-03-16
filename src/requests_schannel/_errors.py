@@ -94,9 +94,7 @@ _SSPI_ERROR_MESSAGES: dict[int, str] = {
 def sspi_error(status_code: int, context: str = "") -> SchannelError:
     """Create an appropriate exception from an SSPI status code."""
     exc_class = _SSPI_ERROR_MAP.get(status_code, SchannelError)
-    message = _SSPI_ERROR_MESSAGES.get(
-        status_code, f"SSPI error 0x{status_code:08X}"
-    )
+    message = _SSPI_ERROR_MESSAGES.get(status_code, f"SSPI error 0x{status_code:08X}")
     if context:
         message = f"{context}: {message}"
     return exc_class(message)

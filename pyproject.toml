@@ -5,7 +5,17 @@ description = "Windows SChannel TLS/mTLS provider for requests and websockets â€
 readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"
-keywords = ["schannel", "sspi", "tls", "mtls", "pki", "smartcard", "windows", "requests", "websockets"]
+keywords = [
+    "schannel",
+    "sspi",
+    "tls",
+    "mtls",
+    "pki",
+    "smartcard",
+    "windows",
+    "requests",
+    "websockets",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -29,17 +39,12 @@ test = [
     "pytest-asyncio>=0.24",
     "pytest-timeout>=2.2",
     "pytest-mock>=3.14",
+    "cryptography>=43.0",
     "requests>=2.31",
     "websockets>=13.0",
 ]
-lint = [
-    "ruff>=0.8",
-    "mypy>=1.13",
-]
-dev = [
-    "requests-schannel[test,lint]",
-    "build>=1.2",
-]
+lint = ["ruff>=0.8", "mypy>=1.13", "types-requests>=2.32.4.20260107"]
+dev = ["requests-schannel[test,lint]", "build>=1.2"]
 
 [build-system]
 requires = ["hatchling"]
@@ -86,8 +91,3 @@ select = ["E", "F", "W", "I", "N", "UP", "B"]
 [tool.ruff.lint.per-file-ignores]
 "src/requests_schannel/backends/ctypes_backend.py" = ["N801", "N806", "E501"]
 "tests/**" = ["E501", "N806"]
-
-[dependency-groups]
-dev = [
-    "types-requests>=2.32.4.20260107",
-]

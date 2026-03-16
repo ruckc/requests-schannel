@@ -15,9 +15,7 @@ pytestmark = [
 class TestAlpnNegotiation:
     """Test ALPN protocol negotiation via SChannel."""
 
-    def test_alpn_http11(
-        self, tls_test_server: tuple[str, int], backend_name: str
-    ) -> None:
+    def test_alpn_http11(self, tls_test_server: tuple[str, int], backend_name: str) -> None:
         """Negotiate http/1.1 via ALPN."""
         import socket
         import ssl

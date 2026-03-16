@@ -68,9 +68,8 @@ class CredentialConfig:
     def __post_init__(self) -> None:
         if self.manual_validation:
             self.flags = (
-                (self.flags & ~c.SCH_CRED_AUTO_CRED_VALIDATION)
-                | c.SCH_CRED_MANUAL_CRED_VALIDATION
-            )
+                self.flags & ~c.SCH_CRED_AUTO_CRED_VALIDATION
+            ) | c.SCH_CRED_MANUAL_CRED_VALIDATION
 
 
 @dataclass

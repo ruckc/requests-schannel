@@ -106,8 +106,9 @@ class TestIscReqFlags:
     def test_tls_client_includes_confidentiality(self) -> None:
         assert c.ISC_REQ_TLS_CLIENT & c.ISC_REQ_CONFIDENTIALITY
 
-    def test_mtls_includes_mutual_auth(self) -> None:
-        assert c.ISC_REQ_TLS_CLIENT_MTLS & c.ISC_REQ_MUTUAL_AUTH
+    def test_mtls_does_not_include_mutual_auth(self) -> None:
+        """SChannel does not support ISC_REQ_MUTUAL_AUTH; mTLS flags must omit it."""
+        assert not (c.ISC_REQ_TLS_CLIENT_MTLS & c.ISC_REQ_MUTUAL_AUTH)
 
     def test_mtls_includes_supplied_creds(self) -> None:
         assert c.ISC_REQ_TLS_CLIENT_MTLS & c.ISC_REQ_USE_SUPPLIED_CREDS

@@ -44,6 +44,7 @@ class SchannelSocket:
         self._alpn_protocols = alpn_protocols
         self._closed = False
         self._connected = False
+        self._io_refs = 0  # tracks active makefile() references
         # Decryption buffer: holds data received from network that hasn't been decrypted yet
         self._recv_buffer = b""
         # Plaintext buffer: holds decrypted data not yet consumed by the caller
@@ -98,10 +99,12 @@ class SchannelSocket:
 
     def recv(self, bufsize: int = 4096) -> bytes:
         """Receive up to bufsize bytes of decrypted data."""
-        if self._closed:
-            raise SchannelError("Socket is closed")
         if not self._connected or self._context is None:
-            raise SchannelError("TLS handshake not completed")
+            if self._plaintext_buffer:
+                chunk = self._plaintext_buffer[:bufsize]
+                self._plaintext_buffer = self._plaintext_buffer[bufsize:]
+                return chunk
+            return b""
 
         # Return buffered plaintext first
         if self._plaintext_buffer:
@@ -229,10 +232,27 @@ class SchannelSocket:
         return self._sock
 
     def close(self) -> None:
-        """Close the TLS connection and underlying socket."""
+        """Close the TLS connection and underlying socket.
+
+        If active ``makefile()`` references exist (``_io_refs > 0``), tear-down
+        is deferred so that ``http.client`` can finish reading the response
+        body.  This mirrors the reference-counting behaviour of Python's
+        ``socket.socket.close()``.
+        """
         if self._closed:
             return
         self._closed = True
+        if self._io_refs <= 0:
+            self._teardown()
+
+    def _decref_socketios(self) -> None:
+        """Called by ``_SchannelSocketIO.close()`` when a makefile ref drops."""
+        self._io_refs -= 1
+        if self._closed and self._io_refs <= 0:
+            self._teardown()
+
+    def _teardown(self) -> None:
+        """Actually release SSPI context and close the raw socket."""
         try:
             self.unwrap()
         except Exception:
@@ -255,6 +275,33 @@ class SchannelSocket:
     def setblocking(self, flag: bool) -> None:
         self._sock.setblocking(flag)
 
+    def setsockopt(self, level: int, optname: int, value: int | bytes) -> None:
+        self._sock.setsockopt(level, optname, value)
+
+    def getsockopt(self, level: int, optname: int, buflen: int = 0) -> int | bytes:
+        if buflen:
+            return self._sock.getsockopt(level, optname, buflen)
+        return self._sock.getsockopt(level, optname)
+
+    def shutdown(self, how: int) -> None:
+        """Shut down one or both halves of the connection."""
+        self._sock.shutdown(how)
+
+    @property
+    def type(self) -> int:
+        """Socket type — always SOCK_STREAM (TCP)."""
+        return socket.SOCK_STREAM
+
+    @property
+    def family(self) -> int:
+        """Address family — delegated to the underlying raw socket."""
+        return self._sock.family
+
+    @property
+    def proto(self) -> int:
+        """Protocol number — delegated to the underlying raw socket."""
+        return self._sock.proto
+
     @property
     def server_hostname(self) -> str:
         return self._server_hostname
@@ -271,7 +318,10 @@ class SchannelSocket:
         """Create a file-like object for the socket.
 
         urllib3/http.client uses makefile("rb") to read HTTP responses.
+        Each call increments ``_io_refs``; the wrapper's ``close()`` decrements
+        it, triggering deferred TLS tear-down when all refs are gone.
         """
+        self._io_refs += 1
         if "b" in mode:
             raw = _SchannelSocketIO(self, mode)
             if buffering < 0:
@@ -349,3 +399,9 @@ class _SchannelSocketIO(io.RawIOBase):
 
     def fileno(self) -> int:
         return self._sock.fileno()
+
+    def close(self) -> None:
+        """Close this IO wrapper and release the makefile reference."""
+        if not self.closed:
+            super().close()
+            self._sock._decref_socketios()

@@ -224,7 +224,5 @@ class TestWrapSocket:
             mock_ss = MagicMock()
             MockSock.return_value = mock_ss
 
-            ctx.wrap_socket(
-                raw_sock, server_hostname="host", do_handshake_on_connect=False
-            )
+            ctx.wrap_socket(raw_sock, server_hostname="host", do_handshake_on_connect=False)
             mock_ss.do_handshake.assert_not_called()

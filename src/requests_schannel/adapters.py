@@ -74,6 +74,32 @@ class SchannelAdapter(HTTPAdapter):
             ctx.set_alpn_protocols(alpn_protocols)
         return ctx
 
+    def send(  # type: ignore[override]
+        self,
+        request: requests.PreparedRequest,
+        stream: bool = False,
+        timeout: None | float | tuple[float, float] = None,
+        verify: bool | str = True,
+        cert: None | str | tuple[str, str] = None,
+        proxies: Any = None,
+    ) -> requests.Response:
+        """Override to prevent requests/urllib3 from overriding SChannel's verify_mode.
+
+        urllib3 unconditionally sets ``ssl_context.verify_mode`` based on the
+        ``cert_reqs`` value derived from *verify*.  For SChannel the
+        verification policy is already encoded in the credential / ISC flags,
+        so we always pass ``verify=False`` to the base class to stop urllib3
+        from clobbering our settings.
+        """
+        return super().send(
+            request,
+            stream=stream,
+            timeout=timeout,
+            verify=False,
+            cert=cert,
+            proxies=proxies,
+        )
+
     def init_poolmanager(  # type: ignore[override]
         self,
         num_pools: int = 10,

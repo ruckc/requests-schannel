@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
+import socket
+import ssl
 import sys
 
 import pytest
@@ -14,24 +15,29 @@ pytestmark = [
 
 
 class TestWebsocketsConnect:
-    """Test websocket connections via schannel_connect."""
+    """Test websocket connections via SChannel TLS + websockets sync client."""
 
-    @pytest.mark.network
     @pytest.mark.timeout(30)
-    async def test_connect_public_echo_server(self) -> None:
-        """Connect to a public websocket echo server."""
+    def test_connect_local_echo_server(self, wss_echo_server: tuple[str, int]) -> None:
+        """Connect to a local websocket echo server via SChannel TLS."""
         try:
-            from requests_schannel.ws import schannel_connect
+            from websockets.sync.client import connect
         except ImportError:
             pytest.skip("websockets not installed")
 
-        import socket
+        from requests_schannel.context import SchannelContext
 
+        host, port = wss_echo_server
+        ctx = SchannelContext()
+        ctx.verify_mode = ssl.CERT_NONE
+
+        raw_sock = socket.create_connection((host, port), timeout=10)
+        tls_sock = ctx.wrap_socket(raw_sock, server_hostname=host)
+
+        ws = connect(f"ws://{host}:{port}/", sock=tls_sock)
         try:
-            # Use a simple public echo server
-            async with schannel_connect("wss://echo.websocket.events") as ws:
-                await ws.send("hello from schannel")
-                response = await asyncio.wait_for(ws.recv(), timeout=10)
-                assert isinstance(response, (str, bytes))
-        except socket.gaierror:
-            pytest.skip("DNS resolution failed (network unavailable)")
+            ws.send("hello from schannel")
+            response = ws.recv(timeout=10)
+            assert response == "hello from schannel"
+        finally:
+            ws.close()
