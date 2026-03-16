@@ -154,7 +154,7 @@ jobs:
 
       - name: Run integration tests
         run: >
-          uv run python -m pytest tests/integration/ -m "not network"
+          uv run -p ${{ matrix.python-version }} pytest tests/integration/ -m "not network"
           --cov=src/requests_schannel
           --cov-append
           --cov-report=xml:coverage-integration.xml
@@ -163,7 +163,7 @@ jobs:
 
       - name: Run compatibility tests
         run: >
-          uv run python -m pytest tests/compat/ -m "not network"
+          uv run -p ${{ matrix.python-version }} pytest tests/compat/ -m "not network"
           --cov=src/requests_schannel
           --cov-append
           --cov-report=xml:coverage-compat.xml
