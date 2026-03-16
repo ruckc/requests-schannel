@@ -43,6 +43,7 @@ from .._errors import (
     CertificateNotFoundError,
     DecryptionError,
     EncryptionError,
+    RenegotiationError,
     SchannelError,
     sspi_error,
 )
@@ -693,7 +694,7 @@ class CtypesBackend(SchannelBackend):
             return b"", b""
 
         if unsigned == SEC_I_RENEGOTIATE:
-            raise SchannelError("Server requested TLS renegotiation")
+            raise RenegotiationError("Server requested TLS renegotiation")
 
         if status < 0:
             raise DecryptionError(f"DecryptMessage failed: 0x{unsigned:08X}")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 from .context import SchannelContext
@@ -9,6 +10,7 @@ from .context import SchannelContext
 try:
     import requests
     from requests.adapters import HTTPAdapter
+    from urllib3.exceptions import InsecureRequestWarning
 except ImportError as exc:
     raise ImportError(
         "requests is required for SchannelAdapter. "
@@ -89,16 +91,19 @@ class SchannelAdapter(HTTPAdapter):
         ``cert_reqs`` value derived from *verify*.  For SChannel the
         verification policy is already encoded in the credential / ISC flags,
         so we always pass ``verify=False`` to the base class to stop urllib3
-        from clobbering our settings.
+        from clobbering our settings.  We also suppress the spurious
+        InsecureRequestWarning that urllib3 emits in response.
         """
-        return super().send(
-            request,
-            stream=stream,
-            timeout=timeout,
-            verify=False,
-            cert=cert,
-            proxies=proxies,
-        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", InsecureRequestWarning)
+            return super().send(
+                request,
+                stream=stream,
+                timeout=timeout,
+                verify=False,
+                cert=cert,
+                proxies=proxies,
+            )
 
     def init_poolmanager(  # type: ignore[override]
         self,

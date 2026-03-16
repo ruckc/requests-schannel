@@ -11,7 +11,7 @@ import socket
 from typing import Any
 
 from ._constants import TLS_MAX_RECORD_SIZE
-from ._errors import DecryptionError, HandshakeError, SchannelError
+from ._errors import DecryptionError, HandshakeError, RenegotiationError, SchannelError
 from .backend import (
     CredentialHandle,
     SchannelBackend,
@@ -93,6 +93,41 @@ class SchannelSocket:
 
         self._connected = True
 
+    def _do_renegotiation(self) -> None:
+        """Handle a TLS renegotiation requested by the server.
+
+        Re-runs the handshake loop on the existing context.  Any leftover
+        data in ``_recv_buffer`` is fed into the first handshake step.
+        """
+        if self._context is None:
+            raise HandshakeError("No security context for renegotiation")
+
+        # Start renegotiation — pass any buffered data as the initial token
+        in_token = self._recv_buffer or None
+        self._recv_buffer = b""
+
+        result = self._backend.handshake_step(self._context, in_token)
+
+        if result.output_token:
+            self._sock.sendall(result.output_token)
+
+        while not result.complete:
+            data = self._recv_raw(TLS_MAX_RECORD_SIZE + 1024)
+            if not data:
+                raise HandshakeError("Connection closed during TLS renegotiation")
+
+            self._recv_buffer += data
+
+            result = self._backend.handshake_step(self._context, self._recv_buffer)
+
+            if result.extra_data:
+                self._recv_buffer = result.extra_data
+            else:
+                self._recv_buffer = b""
+
+            if result.output_token:
+                self._sock.sendall(result.output_token)
+
     def read(self, nbytes: int = 4096) -> bytes:
         """Read up to nbytes of decrypted data."""
         return self.recv(nbytes)
@@ -121,6 +156,9 @@ class SchannelSocket:
             if self._recv_buffer:
                 try:
                     plaintext, extra = self._backend.decrypt(self._context, self._recv_buffer)
+                except RenegotiationError:
+                    self._do_renegotiation()
+                    continue
                 except DecryptionError:
                     raise
                 except SchannelError:
