@@ -33,8 +33,76 @@ jobs:
       - name: Mypy
         run: uv run mypy src/requests_schannel --strict
 
+  setup-certs:
+    name: Setup test certificates
+    runs-on: windows-latest
+    outputs:
+      root-thumbprint: ${{ steps.certs.outputs.root_thumbprint }}
+      server-thumbprint: ${{ steps.certs.outputs.server_thumbprint }}
+      client-thumbprint: ${{ steps.certs.outputs.client_thumbprint }}
+    steps:
+      - name: Generate certificates
+        id: certs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $certDir = "$env:RUNNER_TEMP\certs"
+          New-Item -ItemType Directory -Path $certDir -Force | Out-Null
+
+          # Create Root CA
+          $rootCA = New-SelfSignedCertificate `
+            -Subject "CN=Test Root CA" `
+            -KeyUsage CertSign, CRLSign `
+            -KeyAlgorithm RSA `
+            -KeyLength 2048 `
+            -CertStoreLocation "Cert:\CurrentUser\My" `
+            -NotAfter (Get-Date).AddYears(1) `
+            -TextExtension @("2.5.29.19={text}cA=true")
+
+          # Export Root CA as .cer
+          Export-Certificate -Cert $rootCA -FilePath "$certDir\rootca.cer" | Out-Null
+
+          # Create Server cert signed by Root CA
+          $serverCert = New-SelfSignedCertificate `
+            -Subject "CN=localhost" `
+            -DnsName "localhost" `
+            -KeyAlgorithm RSA `
+            -KeyLength 2048 `
+            -CertStoreLocation "Cert:\CurrentUser\My" `
+            -NotAfter (Get-Date).AddYears(1) `
+            -Signer $rootCA `
+            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.1")
+
+          # Create Client cert signed by Root CA
+          $clientCert = New-SelfSignedCertificate `
+            -Subject "CN=Test Client" `
+            -KeyAlgorithm RSA `
+            -KeyLength 2048 `
+            -CertStoreLocation "Cert:\CurrentUser\My" `
+            -NotAfter (Get-Date).AddYears(1) `
+            -Signer $rootCA `
+            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.2")
+
+          # Export certs as PFX
+          $pfxPass = ConvertTo-SecureString -String "test-password" -Force -AsPlainText
+          Export-PfxCertificate -Cert $serverCert -FilePath "$certDir\server.pfx" -Password $pfxPass | Out-Null
+          Export-PfxCertificate -Cert $clientCert -FilePath "$certDir\client.pfx" -Password $pfxPass | Out-Null
+
+          # Output thumbprints
+          echo "root_thumbprint=$($rootCA.Thumbprint)" >> $env:GITHUB_OUTPUT
+          echo "server_thumbprint=$($serverCert.Thumbprint)" >> $env:GITHUB_OUTPUT
+          echo "client_thumbprint=$($clientCert.Thumbprint)" >> $env:GITHUB_OUTPUT
+
+      - name: Upload certificates
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-certificates
+          path: ${{ runner.temp }}/certs/
+
   test:
     name: Test (Python ${{ matrix.python-version }})
+    needs: setup-certs
     runs-on: windows-2022
     strategy:
       fail-fast: false
@@ -50,54 +118,31 @@ jobs:
       - name: Install dependencies
         run: uv sync --python ${{ matrix.python-version }} --all-extras
 
-      - name: Setup test certificates
+      - name: Download certificates
+        uses: actions/download-artifact@v4
+        with:
+          name: test-certificates
+          path: ${{ runner.temp }}/certs/
+
+      - name: Import certificates
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
 
-          # Create Root CA
-          $rootCA = New-SelfSignedCertificate `
-            -Subject "CN=Test Root CA" `
-            -KeyUsage CertSign, CRLSign `
-            -KeyAlgorithm RSA `
-            -KeyLength 2048 `
-            -CertStoreLocation "Cert:\CurrentUser\My" `
-            -NotAfter (Get-Date).AddYears(1) `
-            -TextExtension @("2.5.29.19={text}cA=true")
+          # Import Root CA to machine-level trusted root (no GUI dialog with admin)
+          certutil -addstore -f Root "$env:RUNNER_TEMP\certs\rootca.cer"
 
-          # Export Root CA to trusted store (certutil -f avoids the GUI confirmation dialog)
-          $rootCert = Export-Certificate -Cert $rootCA -FilePath "$env:RUNNER_TEMP\rootca.cer"
-          certutil -user -addstore -f Root "$env:RUNNER_TEMP\rootca.cer"
-
-          # Create Server cert
-          $serverCert = New-SelfSignedCertificate `
-            -Subject "CN=localhost" `
-            -DnsName "localhost" `
-            -KeyAlgorithm RSA `
-            -KeyLength 2048 `
-            -CertStoreLocation "Cert:\CurrentUser\My" `
-            -NotAfter (Get-Date).AddYears(1) `
-            -Signer $rootCA `
-            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.1")
-
-          # Create Client cert
-          $clientCert = New-SelfSignedCertificate `
-            -Subject "CN=Test Client" `
-            -KeyAlgorithm RSA `
-            -KeyLength 2048 `
-            -CertStoreLocation "Cert:\CurrentUser\My" `
-            -NotAfter (Get-Date).AddYears(1) `
-            -Signer $rootCA `
-            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.2")
-
-          # Export server cert as PFX
+          # Import server and client PFX into CurrentUser\My
           $pfxPass = ConvertTo-SecureString -String "test-password" -Force -AsPlainText
-          Export-PfxCertificate -Cert $serverCert -FilePath "$env:RUNNER_TEMP\server.pfx" -Password $pfxPass
+          Import-PfxCertificate -FilePath "$env:RUNNER_TEMP\certs\server.pfx" `
+            -CertStoreLocation "Cert:\CurrentUser\My" -Password $pfxPass
+          Import-PfxCertificate -FilePath "$env:RUNNER_TEMP\certs\client.pfx" `
+            -CertStoreLocation "Cert:\CurrentUser\My" -Password $pfxPass
 
-          # Export thumbprints
-          echo "ROOT_CA_THUMBPRINT=$($rootCA.Thumbprint)" >> $env:GITHUB_ENV
-          echo "SERVER_THUMBPRINT=$($serverCert.Thumbprint)" >> $env:GITHUB_ENV
-          echo "CLIENT_THUMBPRINT=$($clientCert.Thumbprint)" >> $env:GITHUB_ENV
+          # Set thumbprints as env vars
+          echo "ROOT_CA_THUMBPRINT=${{ needs.setup-certs.outputs.root-thumbprint }}" >> $env:GITHUB_ENV
+          echo "SERVER_THUMBPRINT=${{ needs.setup-certs.outputs.server-thumbprint }}" >> $env:GITHUB_ENV
+          echo "CLIENT_THUMBPRINT=${{ needs.setup-certs.outputs.client-thumbprint }}" >> $env:GITHUB_ENV
 
       - name: Run unit tests
         run: >
@@ -141,6 +186,5 @@ jobs:
           Get-ChildItem "Cert:\CurrentUser\My" | Where-Object {
             $_.Thumbprint -in $thumbprints
           } | Remove-Item -Force
-          Get-ChildItem "Cert:\CurrentUser\Root" | Where-Object {
-            $_.Thumbprint -eq $env:ROOT_CA_THUMBPRINT
-          } | Remove-Item -Force
+          # Root CA was imported to machine store (no GUI dialog)
+          certutil -delstore Root $env:ROOT_CA_THUMBPRINT
