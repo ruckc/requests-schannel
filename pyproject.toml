@@ -1,6 +1,6 @@
 [project]
 name = "requests-schannel"
-version = "0.1.1"
+version = "0.1.2"
 description = "Windows SChannel TLS/mTLS provider for requests and websockets — smartcard and PKI authentication via native Windows APIs"
 readme = "README.md"
 requires-python = ">=3.12"
