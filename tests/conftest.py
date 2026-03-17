@@ -308,6 +308,8 @@ def large_file_server(tls_certs: TestCerts) -> Generator[tuple[str, int]]:
     DOWNLOAD_CHUNK = 65536  # 64 KB write chunks
 
     class LargeFileHandler(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
         def do_GET(self) -> None:
             from urllib.parse import parse_qs, urlparse
 
@@ -334,22 +336,22 @@ def large_file_server(tls_certs: TestCerts) -> Generator[tuple[str, int]]:
             self.wfile.flush()
 
         def do_POST(self) -> None:
+            content_length_hdr = self.headers.get("Content-Length")
+            if content_length_hdr is None:
+                self.send_response(411)
+                self.send_header("Content-Type", "text/plain")
+                self.end_headers()
+                self.wfile.write(b"Content-Length required")
+                return
+
+            content_length = int(content_length_hdr)
             total = 0
-            content_length = int(self.headers.get("Content-Length", 0))
-            if content_length:
-                while total < content_length:
-                    to_read = min(DOWNLOAD_CHUNK, content_length - total)
-                    chunk = self.rfile.read(to_read)
-                    if not chunk:
-                        break
-                    total += len(chunk)
-            else:
-                # chunked upload
-                while True:
-                    chunk = self.rfile.read(DOWNLOAD_CHUNK)
-                    if not chunk:
-                        break
-                    total += len(chunk)
+            while total < content_length:
+                to_read = min(DOWNLOAD_CHUNK, content_length - total)
+                chunk = self.rfile.read(to_read)
+                if not chunk:
+                    break
+                total += len(chunk)
 
             body = str(total).encode()
             self.send_response(200)
@@ -371,6 +373,8 @@ def large_file_server(tls_certs: TestCerts) -> Generator[tuple[str, int]]:
     yield str(host), port
 
     server.shutdown()
+    server.server_close()
+    thread.join(timeout=5)
 
 
 # --- Windows certificate store fixtures ---

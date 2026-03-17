@@ -18,14 +18,39 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Generator
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    import requests
 
 pytestmark = [
     pytest.mark.compat,
     pytest.mark.slow,
     pytest.mark.skipif(sys.platform != "win32", reason="Windows only"),
 ]
+
+
+# ---------------------------------------------------------------------------
+# Shared helper
+# ---------------------------------------------------------------------------
+
+
+def _make_session() -> requests.Session:
+    """Create a ``requests.Session`` with ``SchannelAdapter`` (no cert verification)."""
+    import ssl
+
+    import requests
+
+    from requests_schannel.adapters import SchannelAdapter
+
+    session = requests.Session()
+    adapter = SchannelAdapter()
+    adapter.schannel_context.verify_mode = ssl.CERT_NONE
+    session.mount("https://", adapter)
+    return session
+
 
 # ---------------------------------------------------------------------------
 # Download tests
@@ -35,26 +60,13 @@ pytestmark = [
 class TestLargeFileDownload:
     """Streaming large HTTP downloads via SchannelAdapter."""
 
-    def _make_session(self):  # type: ignore[return]
-        import ssl
-
-        import requests
-
-        from requests_schannel.adapters import SchannelAdapter
-
-        session = requests.Session()
-        adapter = SchannelAdapter()
-        adapter.schannel_context.verify_mode = ssl.CERT_NONE
-        session.mount("https://", adapter)
-        return session
-
     def test_stream_1mb_download_via_iter_content(self, large_file_server: tuple[str, int]) -> None:
         """Download 1 MB in 64 KB chunks via iter_content — all data arrives."""
         host, port = large_file_server
         size = 1 * 1024 * 1024  # 1 MB
         chunk_size = 65536  # 64 KB
 
-        session = self._make_session()
+        session = _make_session()
         resp = session.get(
             f"https://{host}:{port}/download?size={size}",
             stream=True,
@@ -78,7 +90,7 @@ class TestLargeFileDownload:
         size = 10 * 1024 * 1024  # 10 MB
         chunk_size = 65536  # 64 KB
 
-        session = self._make_session()
+        session = _make_session()
         resp = session.get(
             f"https://{host}:{port}/download?size={size}",
             stream=True,
@@ -104,7 +116,7 @@ class TestLargeFileDownload:
         host, port = large_file_server
         size = 5 * 1024 * 1024  # 5 MB
 
-        session = self._make_session()
+        session = _make_session()
         resp = session.get(
             f"https://{host}:{port}/download?size={size}",
             stream=True,
@@ -123,7 +135,7 @@ class TestLargeFileDownload:
         size = 256 * 1024  # 256 KB
         chunk_size = 1024  # 1 KB chunks
 
-        session = self._make_session()
+        session = _make_session()
         resp = session.get(
             f"https://{host}:{port}/download?size={size}",
             stream=True,
@@ -144,26 +156,13 @@ class TestLargeFileDownload:
 class TestLargeFileUpload:
     """Streaming large HTTP uploads via SchannelAdapter."""
 
-    def _make_session(self):  # type: ignore[return]
-        import ssl
-
-        import requests
-
-        from requests_schannel.adapters import SchannelAdapter
-
-        session = requests.Session()
-        adapter = SchannelAdapter()
-        adapter.schannel_context.verify_mode = ssl.CERT_NONE
-        session.mount("https://", adapter)
-        return session
-
     def test_upload_1mb_body(self, large_file_server: tuple[str, int]) -> None:
         """POST a 1 MB body — server echoes byte count."""
         host, port = large_file_server
         size = 1 * 1024 * 1024  # 1 MB
         payload = b"\xab" * size
 
-        session = self._make_session()
+        session = _make_session()
         resp = session.post(
             f"https://{host}:{port}/upload",
             data=payload,
@@ -179,7 +178,7 @@ class TestLargeFileUpload:
         size = 10 * 1024 * 1024  # 10 MB
         payload = b"\xcd" * size
 
-        session = self._make_session()
+        session = _make_session()
         resp = session.post(
             f"https://{host}:{port}/upload",
             data=payload,
@@ -206,7 +205,7 @@ class TestLargeFileUpload:
             for _ in range(num_chunks):
                 yield b"\xef" * chunk_size
 
-        session = self._make_session()
+        session = _make_session()
         resp = session.post(
             f"https://{host}:{port}/upload",
             data=payload_generator(),
