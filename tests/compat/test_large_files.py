@@ -48,9 +48,7 @@ class TestLargeFileDownload:
         session.mount("https://", adapter)
         return session
 
-    def test_stream_1mb_download_via_iter_content(
-        self, large_file_server: tuple[str, int]
-    ) -> None:
+    def test_stream_1mb_download_via_iter_content(self, large_file_server: tuple[str, int]) -> None:
         """Download 1 MB in 64 KB chunks via iter_content — all data arrives."""
         host, port = large_file_server
         size = 1 * 1024 * 1024  # 1 MB
@@ -163,7 +161,7 @@ class TestLargeFileUpload:
         """POST a 1 MB body — server echoes byte count."""
         host, port = large_file_server
         size = 1 * 1024 * 1024  # 1 MB
-        payload = b"\xAB" * size
+        payload = b"\xab" * size
 
         session = self._make_session()
         resp = session.post(
@@ -179,7 +177,7 @@ class TestLargeFileUpload:
         """POST a 10 MB body — verifies chunked send path handles large payloads."""
         host, port = large_file_server
         size = 10 * 1024 * 1024  # 10 MB
-        payload = b"\xCD" * size
+        payload = b"\xcd" * size
 
         session = self._make_session()
         resp = session.post(
@@ -206,7 +204,7 @@ class TestLargeFileUpload:
 
         def payload_generator() -> Generator[bytes]:
             for _ in range(num_chunks):
-                yield b"\xEF" * chunk_size
+                yield b"\xef" * chunk_size
 
         session = self._make_session()
         resp = session.post(
