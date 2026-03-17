@@ -54,9 +54,7 @@ def _make_https_request(url: str) -> int:
 class TestThreadPoolExecutor:
     """Verify concurrent usage of SchannelAdapter from multiple threads."""
 
-    def test_concurrent_requests_separate_sessions(
-        self, tls_test_server: tuple[str, int]
-    ) -> None:
+    def test_concurrent_requests_separate_sessions(self, tls_test_server: tuple[str, int]) -> None:
         """Each thread creates its own session and makes an independent request."""
         _, port = tls_test_server
         url = f"https://localhost:{port}/"
@@ -69,9 +67,7 @@ class TestThreadPoolExecutor:
         assert len(results) == num_workers
         assert all(status == 200 for status in results)
 
-    def test_concurrent_requests_shared_session(
-        self, tls_test_server: tuple[str, int]
-    ) -> None:
+    def test_concurrent_requests_shared_session(self, tls_test_server: tuple[str, int]) -> None:
         """Multiple threads share a single session (exercises the connection pool)."""
         import ssl
 
@@ -94,18 +90,14 @@ class TestThreadPoolExecutor:
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
                 futures = [executor.submit(_request, i) for i in range(num_workers)]
-                results = [
-                    f.result(timeout=30) for f in concurrent.futures.as_completed(futures)
-                ]
+                results = [f.result(timeout=30) for f in concurrent.futures.as_completed(futures)]
         finally:
             session.close()
 
         assert len(results) == num_workers
         assert all(status == 200 for status in results)
 
-    def test_concurrent_requests_many_threads(
-        self, tls_test_server: tuple[str, int]
-    ) -> None:
+    def test_concurrent_requests_many_threads(self, tls_test_server: tuple[str, int]) -> None:
         """Stress-test with a larger number of concurrent threads."""
         _, port = tls_test_server
         url = f"https://localhost:{port}/"
@@ -127,9 +119,7 @@ class TestThreadPoolExecutor:
 class TestProcessPoolExecutor:
     """Verify that SchannelAdapter works correctly in worker processes."""
 
-    def test_concurrent_requests_separate_processes(
-        self, tls_test_server: tuple[str, int]
-    ) -> None:
+    def test_concurrent_requests_separate_processes(self, tls_test_server: tuple[str, int]) -> None:
         """Each worker process creates its own session and makes a request."""
         _, port = tls_test_server
         url = f"https://localhost:{port}/"
@@ -142,9 +132,7 @@ class TestProcessPoolExecutor:
         assert len(results) == num_workers
         assert all(status == 200 for status in results)
 
-    def test_sequential_requests_multiple_processes(
-        self, tls_test_server: tuple[str, int]
-    ) -> None:
+    def test_sequential_requests_multiple_processes(self, tls_test_server: tuple[str, int]) -> None:
         """Reuse the same pool to send requests sequentially across reused workers."""
         _, port = tls_test_server
         url = f"https://localhost:{port}/"
