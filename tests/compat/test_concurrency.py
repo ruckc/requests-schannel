@@ -105,7 +105,7 @@ class TestThreadPoolExecutor:
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
             futures = [executor.submit(_make_https_request, url) for _ in range(num_workers)]
-            results = [f.result(timeout=60) for f in concurrent.futures.as_completed(futures)]
+            results = [f.result(timeout=30) for f in concurrent.futures.as_completed(futures)]
 
         assert len(results) == num_workers
         assert all(status == 200 for status in results)
