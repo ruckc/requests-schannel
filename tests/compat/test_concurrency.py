@@ -62,7 +62,7 @@ class TestThreadPoolExecutor:
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
             futures = [executor.submit(_make_https_request, url) for _ in range(num_workers)]
-            results = [f.result(timeout=30) for f in concurrent.futures.as_completed(futures)]
+            results = [f.result() for f in concurrent.futures.as_completed(futures, timeout=30)]
 
         assert len(results) == num_workers
         assert all(status == 200 for status in results)
@@ -90,7 +90,7 @@ class TestThreadPoolExecutor:
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
                 futures = [executor.submit(_request, i) for i in range(num_workers)]
-                results = [f.result(timeout=30) for f in concurrent.futures.as_completed(futures)]
+                results = [f.result() for f in concurrent.futures.as_completed(futures, timeout=30)]
         finally:
             session.close()
 
@@ -105,7 +105,7 @@ class TestThreadPoolExecutor:
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
             futures = [executor.submit(_make_https_request, url) for _ in range(num_workers)]
-            results = [f.result(timeout=30) for f in concurrent.futures.as_completed(futures)]
+            results = [f.result() for f in concurrent.futures.as_completed(futures, timeout=30)]
 
         assert len(results) == num_workers
         assert all(status == 200 for status in results)
@@ -127,7 +127,7 @@ class TestProcessPoolExecutor:
 
         with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
             futures = [executor.submit(_make_https_request, url) for _ in range(num_workers)]
-            results = [f.result(timeout=60) for f in concurrent.futures.as_completed(futures)]
+            results = [f.result() for f in concurrent.futures.as_completed(futures, timeout=30)]
 
         assert len(results) == num_workers
         assert all(status == 200 for status in results)
@@ -140,7 +140,7 @@ class TestProcessPoolExecutor:
 
         with concurrent.futures.ProcessPoolExecutor(max_workers=2) as executor:
             # map() blocks until all results are ready
-            statuses = list(executor.map(_make_https_request, [url] * num_requests, timeout=60))
+            statuses = list(executor.map(_make_https_request, [url] * num_requests, timeout=30))
 
         assert len(statuses) == num_requests
         assert all(status == 200 for status in statuses)
