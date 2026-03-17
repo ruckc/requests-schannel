@@ -281,6 +281,102 @@ def tls_test_server(tls_certs: TestCerts) -> Generator[tuple[str, int]]:
     server.shutdown()
 
 
+@pytest.fixture
+def large_file_server(tls_certs: TestCerts) -> Generator[tuple[str, int]]:
+    """Start a local HTTPS server that serves and accepts large payloads.
+
+    GET /download?size=<n>  — streams *n* bytes of b'\\x00' padding using chunked
+                              transfer encoding so the server never buffers the
+                              full body in memory.
+    POST /upload            — reads the request body and responds with the number
+                              of bytes received (as a decimal string), allowing
+                              callers to verify the full payload arrived.
+
+    Yields (host, port). Server runs in a background daemon thread and is shut
+    down after the test.
+    """
+    ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ssl_ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    try:
+        ssl_ctx.load_cert_chain(
+            certfile=str(tls_certs.server_cert_pem_path),
+            keyfile=str(tls_certs.server_key_pem_path),
+        )
+    except ssl.SSLError:
+        pytest.skip("Could not load server certificate PEM files")
+
+    DOWNLOAD_CHUNK = 65536  # 64 KB write chunks
+
+    class LargeFileHandler(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def do_GET(self) -> None:
+            from urllib.parse import parse_qs, urlparse
+
+            parsed = urlparse(self.path)
+            params = parse_qs(parsed.query)
+            size = int(params.get("size", ["1048576"])[0])
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+
+            remaining = size
+            while remaining > 0:
+                to_write = min(DOWNLOAD_CHUNK, remaining)
+                chunk = b"\x00" * to_write
+                self.wfile.write(f"{to_write:x}\r\n".encode())
+                self.wfile.write(chunk)
+                self.wfile.write(b"\r\n")
+                remaining -= to_write
+
+            # Terminating chunk
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
+
+        def do_POST(self) -> None:
+            content_length_hdr = self.headers.get("Content-Length")
+            if content_length_hdr is None:
+                self.send_response(411)
+                self.send_header("Content-Type", "text/plain")
+                self.end_headers()
+                self.wfile.write(b"Content-Length required")
+                return
+
+            content_length = int(content_length_hdr)
+            total = 0
+            while total < content_length:
+                to_read = min(DOWNLOAD_CHUNK, content_length - total)
+                chunk = self.rfile.read(to_read)
+                if not chunk:
+                    break
+                total += len(chunk)
+
+            body = str(total).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args: Any) -> None:
+            pass  # Suppress server logs during tests
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), LargeFileHandler)
+    server.socket = ssl_ctx.wrap_socket(server.socket, server_side=True)
+    host, port = server.server_address
+
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    yield str(host), port
+
+    server.shutdown()
+    server.server_close()
+    thread.join(timeout=5)
+
+
 # --- Windows certificate store fixtures ---
 
 
