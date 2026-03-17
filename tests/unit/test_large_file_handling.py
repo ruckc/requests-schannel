@@ -17,7 +17,6 @@ import pytest
 from requests_schannel.backend import CredentialHandle, HandshakeResult
 from requests_schannel.socket import SchannelSocket
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

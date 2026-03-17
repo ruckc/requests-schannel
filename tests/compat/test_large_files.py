@@ -192,13 +192,19 @@ class TestLargeFileUpload:
         session.close()
 
     def test_upload_streaming_generator(self, large_file_server: tuple[str, int]) -> None:
-        """Upload via a generator — verifies the adapter supports streaming uploads."""
+        """Upload via a generator — verifies the adapter supports streaming uploads.
+
+        An explicit Content-Length header is provided because BaseHTTPRequestHandler
+        does not support chunked Transfer-Encoding on the server side.  The generator
+        still exercises the streaming send path through the adapter (data is yielded
+        incrementally, not buffered into a single bytes object).
+        """
         host, port = large_file_server
         chunk_size = 65536  # 64 KB
         num_chunks = 16  # 1 MB total
         total_size = chunk_size * num_chunks
 
-        def payload_generator() -> Generator[bytes, None, None]:
+        def payload_generator() -> Generator[bytes]:
             for _ in range(num_chunks):
                 yield b"\xEF" * chunk_size
 
@@ -206,6 +212,7 @@ class TestLargeFileUpload:
         resp = session.post(
             f"https://{host}:{port}/upload",
             data=payload_generator(),
+            headers={"Content-Length": str(total_size)},
             timeout=30,
         )
         assert resp.status_code == 200
