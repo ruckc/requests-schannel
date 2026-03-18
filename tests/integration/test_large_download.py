@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Remote URLs with approximate sizes — used for real-world download benchmarks.
 DOWNLOAD_TARGETS = [
-        pytest.param(
+    pytest.param(
         "https://proof.ovh.net/files/100Mb.dat",
         100_000_000,
         id="100MB-ovh",

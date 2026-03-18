@@ -12,4 +12,3 @@ Public API is available via submodules::
     from requests_schannel.async_socket import AsyncSchannelSocket
     from requests_schannel.ws import schannel_connect
 """
-
