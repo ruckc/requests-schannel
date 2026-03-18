@@ -107,8 +107,8 @@ class TestLargeDownloadPerformance:
     ) -> None:
         """Baseline: download via default requests (OpenSSL/certifi)."""
         with caplog.at_level(logging.INFO, logger=__name__):
-            session = requests.Session()
-            result = _download_streamed(session, url, label="openssl")
+            with requests.Session() as session:
+                result = _download_streamed(session, url, label="openssl")
             logger.info(
                 "[openssl] %s — %.2f s, %.2f Mbps, %d bytes",
                 url,
@@ -125,9 +125,9 @@ class TestLargeDownloadPerformance:
     ) -> None:
         """Download via SchannelAdapter (Windows SChannel TLS)."""
         with caplog.at_level(logging.INFO, logger=__name__):
-            session = requests.Session()
-            session.mount("https://", SchannelAdapter())
-            result = _download_streamed(session, url, label="schannel")
+            with requests.Session() as session:
+                session.mount("https://", SchannelAdapter())
+                result = _download_streamed(session, url, label="schannel")
             logger.info(
                 "[schannel] %s — %.2f s, %.2f Mbps, %d bytes",
                 url,
@@ -145,17 +145,19 @@ class TestLargeDownloadPerformance:
         """Back-to-back download with both adapters, logging the comparison."""
         with caplog.at_level(logging.INFO, logger=__name__):
             # --- default (OpenSSL) ---
-            default_session = requests.Session()
-            default_result = _download_streamed(default_session, url, label="openssl")
+            with requests.Session() as default_session:
+                default_result = _download_streamed(default_session, url, label="openssl")
 
             # --- SChannel ---
-            schannel_session = requests.Session()
-            schannel_session.mount("https://", SchannelAdapter())
-            schannel_result = _download_streamed(schannel_session, url, label="schannel")
+            with requests.Session() as schannel_session:
+                schannel_session.mount("https://", SchannelAdapter())
+                schannel_result = _download_streamed(schannel_session, url, label="schannel")
 
             _log_comparison(default_result, schannel_result)
 
-            # Sanity: both downloaded roughly the same amount
+            # Both downloads must meet minimum size and be roughly equal
+            assert default_result.bytes_downloaded >= expected_min_bytes * 0.95
+            assert schannel_result.bytes_downloaded >= expected_min_bytes * 0.95
             assert abs(default_result.bytes_downloaded - schannel_result.bytes_downloaded) < 4096
 
     @pytest.mark.timeout(600)
@@ -171,13 +173,13 @@ class TestLargeDownloadPerformance:
             for i in range(iterations):
                 logger.info("--- Iteration %d/%d ---", i + 1, iterations)
 
-                default_session = requests.Session()
-                dr = _download_streamed(default_session, url, label="openssl")
+                with requests.Session() as default_session:
+                    dr = _download_streamed(default_session, url, label="openssl")
                 default_times.append(dr.elapsed_s)
 
-                schannel_session = requests.Session()
-                schannel_session.mount("https://", SchannelAdapter())
-                sr = _download_streamed(schannel_session, url, label="schannel")
+                with requests.Session() as schannel_session:
+                    schannel_session.mount("https://", SchannelAdapter())
+                    sr = _download_streamed(schannel_session, url, label="schannel")
                 schannel_times.append(sr.elapsed_s)
 
                 _log_comparison(dr, sr)
