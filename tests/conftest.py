@@ -26,19 +26,30 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "network: Tests requiring internet access")
     config.addinivalue_line("markers", "smartcard: Manual smartcard tests (skipped by default)")
     config.addinivalue_line("markers", "slow: Longer-running tests")
+    config.addinivalue_line(
+        "markers", "large_download: Large download perf tests (skipped by default)"
+    )
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Auto-skip smartcard tests unless --smartcard flag is passed."""
+    """Auto-skip smartcard and large-download tests unless their flags are passed."""
     if not config.getoption("--smartcard", default=False):
         skip_smartcard = pytest.mark.skip(reason="Smartcard tests require --smartcard flag")
         for item in items:
             if "smartcard" in item.keywords:
                 item.add_marker(skip_smartcard)
+    if not config.getoption("--large-download", default=False):
+        skip_dl = pytest.mark.skip(reason="Large download tests require --large-download flag")
+        for item in items:
+            if "large_download" in item.keywords:
+                item.add_marker(skip_dl)
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--smartcard", action="store_true", default=False, help="Run smartcard tests")
+    parser.addoption(
+        "--large-download", action="store_true", default=False, help="Run large download perf tests"
+    )
 
 
 # --- Skip helpers ---
