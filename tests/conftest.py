@@ -26,7 +26,9 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "network: Tests requiring internet access")
     config.addinivalue_line("markers", "smartcard: Manual smartcard tests (skipped by default)")
     config.addinivalue_line("markers", "slow: Longer-running tests")
-    config.addinivalue_line("markers", "large_download: Large download perf tests (skipped by default)")
+    config.addinivalue_line(
+        "markers", "large_download: Large download perf tests (skipped by default)"
+    )
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -45,7 +47,9 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--smartcard", action="store_true", default=False, help="Run smartcard tests")
-    parser.addoption("--large-download", action="store_true", default=False, help="Run large download perf tests")
+    parser.addoption(
+        "--large-download", action="store_true", default=False, help="Run large download perf tests"
+    )
 
 
 # --- Skip helpers ---
