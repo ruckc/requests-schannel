@@ -44,6 +44,7 @@ class SchannelAdapter(HTTPAdapter):
         alpn_protocols: list[str] | None = None,
         backend: str | None = None,
         schannel_context: SchannelContext | None = None,
+        hwnd: int | None = None,
         **kwargs: Any,
     ) -> None:
         self._schannel_context = schannel_context or self._build_context(
@@ -53,6 +54,7 @@ class SchannelAdapter(HTTPAdapter):
             cert_store_name=cert_store_name,
             alpn_protocols=alpn_protocols,
             backend=backend,
+            hwnd=hwnd,
         )
         super().__init__(**kwargs)
 
@@ -64,6 +66,7 @@ class SchannelAdapter(HTTPAdapter):
         cert_store_name: str,
         alpn_protocols: list[str] | None,
         backend: str | None,
+        hwnd: int | None = None,
     ) -> SchannelContext:
         ctx = SchannelContext(backend=backend)
         if client_cert_thumbprint:
@@ -74,6 +77,8 @@ class SchannelAdapter(HTTPAdapter):
         ctx.cert_store_name = cert_store_name
         if alpn_protocols:
             ctx.set_alpn_protocols(alpn_protocols)
+        if hwnd is not None:
+            ctx.hwnd = hwnd
         return ctx
 
     def send(  # type: ignore[override]
@@ -134,6 +139,7 @@ def create_session(
     cert_store_name: str = "MY",
     alpn_protocols: list[str] | None = None,
     backend: str | None = None,
+    hwnd: int | None = None,
     **kwargs: Any,
 ) -> requests.Session:
     """Create a pre-configured requests session using Windows SChannel.
@@ -155,6 +161,7 @@ def create_session(
         cert_store_name=cert_store_name,
         alpn_protocols=alpn_protocols,
         backend=backend,
+        hwnd=hwnd,
         **kwargs,
     )
     session = requests.Session()

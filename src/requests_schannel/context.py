@@ -67,6 +67,7 @@ class SchannelContext:
         self._protocols: int = SP_PROT_TLS_CLIENT_DEFAULT
         self._verify_mode: ssl.VerifyMode = ssl.CERT_REQUIRED
         self._check_hostname: bool = True
+        self._hwnd: int | None = None
 
         # Credential handle (lazy-initialized, thread-safe once created)
         self._credential: CredentialHandle | None = None
@@ -112,6 +113,22 @@ class SchannelContext:
     @cert_store_name.setter
     def cert_store_name(self, value: str) -> None:
         self._cert_store_name = value
+        self._credential = None
+
+    @property
+    def hwnd(self) -> int | None:
+        """Optional parent window handle (HWND) for Windows Security dialogs.
+
+        When set, Windows certificate-selection and smartcard PIN prompts will
+        use this window as their parent so that they appear on top of the
+        application window rather than behind it.  Pass the integer value of an
+        HWND (e.g. ``int(win32gui.GetForegroundWindow())``).
+        """
+        return self._hwnd
+
+    @hwnd.setter
+    def hwnd(self, value: int | None) -> None:
+        self._hwnd = value
         self._credential = None
 
     # --- TLS configuration ---
@@ -269,6 +286,7 @@ class SchannelContext:
             cert_context=cert_context,
             flags=flags,
             manual_validation=(self._verify_mode == ssl.CERT_NONE),
+            hwnd=self._hwnd,
         )
 
         self._credential = self._backend.acquire_credentials(config)

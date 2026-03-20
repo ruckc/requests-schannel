@@ -10,11 +10,18 @@ from typing import Any
 from .._constants import (
     CERT_FIND_HASH,
     CERT_FIND_SUBJECT_STR,
+    CERT_NCRYPT_KEY_SPEC,
     CERT_STORE_PROV_SYSTEM,
     CERT_SYSTEM_STORE_CURRENT_USER,
     CERT_SYSTEM_STORE_LOCAL_MACHINE,
+    CRYPT_ACQUIRE_CACHE_FLAG,
+    CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG,
+    CRYPT_ACQUIRE_SILENT_FLAG,
+    CRYPT_ACQUIRE_WINDOW_HANDLE_FLAG,
     ENCODING_DEFAULT,
     ISC_REQ_TLS_CLIENT,
+    NCRYPT_WINDOW_HANDLE_PROPERTY,
+    PP_CLIENT_HWND,
     SCHANNEL_CRED_VERSION,
     SEC_APPLICATION_PROTOCOL_NEGOTIATION_EXT_ALPN,
     SEC_APPLICATION_PROTOCOL_NEGOTIATION_STATUS_SUCCESS,
@@ -62,6 +69,7 @@ from ..backend import (
 # --- Win32 DLLs ---
 _secur32 = ctypes.windll.secur32
 _crypt32 = ctypes.windll.crypt32
+_ncrypt = ctypes.windll.ncrypt
 
 # --- ctypes Structures ---
 
@@ -243,6 +251,86 @@ def _make_sec_handle() -> _SecHandle:
     h = _SecHandle()
     ctypes.memset(ctypes.byref(h), 0, ctypes.sizeof(h))
     return h
+
+
+def _set_cert_key_hwnd(cert_context: Any, hwnd: int) -> None:
+    """Pre-acquire and cache the private key for *cert_context* with the
+    parent-window handle *hwnd* set, so that Windows Security dialogs
+    (certificate-selection pickers and smartcard PIN prompts) appear on top
+    of the application window rather than behind it.
+
+    For CAPI keys the HWND is registered via ``CryptSetProvParam(PP_CLIENT_HWND)``.
+    For CNG keys it is registered via ``NCryptSetProperty(NCRYPT_WINDOW_HANDLE_PROPERTY)``.
+    The key handle is cached inside *cert_context* (``CRYPT_ACQUIRE_CACHE_FLAG``)
+    so that SChannel reuses it during the TLS handshake.
+
+    Errors are silently ignored — the HWND hint is best-effort; the TLS
+    connection still proceeds if the key cannot be pre-acquired.
+    """
+    hwnd_val = wt.HWND(hwnd)
+    _hprov = ctypes.c_void_p(0)
+    _keyspec = wt.DWORD(0)
+    _caller_free = wt.BOOL(0)
+
+    acq_flags = (
+        CRYPT_ACQUIRE_CACHE_FLAG
+        | CRYPT_ACQUIRE_WINDOW_HANDLE_FLAG
+        | CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG
+    )
+
+    ok = _crypt32.CryptAcquireCertificatePrivateKey(
+        cert_context,
+        acq_flags,
+        ctypes.byref(hwnd_val),  # pvParameters = &hwnd (parent window)
+        ctypes.byref(_hprov),
+        ctypes.byref(_keyspec),
+        ctypes.byref(_caller_free),
+    )
+    if not ok or not _hprov.value:
+        return
+
+    try:
+        if _keyspec.value == CERT_NCRYPT_KEY_SPEC:
+            # CNG key: set NCRYPT_WINDOW_HANDLE_PROPERTY so the provider
+            # uses the correct parent window for PIN dialogs.
+            try:
+                _ncrypt.NCryptSetProperty(
+                    _hprov,
+                    ctypes.c_wchar_p(NCRYPT_WINDOW_HANDLE_PROPERTY),
+                    ctypes.byref(hwnd_val),
+                    ctypes.sizeof(hwnd_val),
+                    0,  # dwFlags
+                )
+            except Exception:
+                pass
+        else:
+            # Legacy CAPI key: set PP_CLIENT_HWND so the CSP uses the correct
+            # parent window for PIN dialogs.
+            try:
+                ctypes.windll.advapi32.CryptSetProvParam(
+                    _hprov,
+                    PP_CLIENT_HWND,
+                    ctypes.byref(hwnd_val),
+                    0,
+                )
+            except Exception:
+                pass
+    finally:
+        # Only release the handle when the caller is responsible AND the key
+        # was not cached inside the cert context.  When CRYPT_ACQUIRE_CACHE_FLAG
+        # is honoured the handle is owned by the cert context, so _caller_free
+        # is FALSE and we must not free it.
+        if _caller_free.value and _hprov.value:
+            if _keyspec.value == CERT_NCRYPT_KEY_SPEC:
+                try:
+                    _ncrypt.NCryptFreeObject(_hprov)
+                except Exception:
+                    pass
+            else:
+                try:
+                    ctypes.windll.advapi32.CryptReleaseContext(_hprov, 0)
+                except Exception:
+                    pass
 
 
 def _build_alpn_buffer(protocols: list[str]) -> bytes:
@@ -452,6 +540,13 @@ class CtypesBackend(SchannelBackend):
             cert_array = (PCERT_CONTEXT * 1)(config.cert_context)
             cred.cCreds = 1
             cred.paCred = ctypes.cast(cert_array, PVOID)
+
+            # If a parent window handle is provided, pre-acquire and cache the
+            # private key with the HWND set so that Windows Security dialogs
+            # (certificate selection, smartcard PIN prompts) appear on top of
+            # the application window rather than behind it.
+            if config.hwnd is not None:
+                _set_cert_key_hwnd(config.cert_context, config.hwnd)
 
         cred_handle = _make_sec_handle()
         expiry = _TimeStamp()
