@@ -482,7 +482,6 @@ class CtypesCertStore(CertStore):
         _hprov = ctypes.c_void_p(0)
         _keyspec = wt.DWORD(0)
         _caller_free = wt.BOOL(0)
-        CRYPT_ACQUIRE_SILENT_FLAG = 0x00000040
         has_key = bool(
             _crypt32.CryptAcquireCertificatePrivateKey(
                 cert_context,
