@@ -251,6 +251,11 @@ def tls_test_server(tls_certs: TestCerts) -> Generator[tuple[str, int]]:
     The server advertises ALPN protocols so clients can negotiate.
     """
     ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    # Enforce modern TLS versions (TLS 1.2+) for the test server
+    if hasattr(ssl, "TLSVersion"):
+        ssl_ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    else:  # Fallback for older Python versions without TLSVersion
+        ssl_ctx.options |= getattr(ssl, "OP_NO_TLSv1", 0) | getattr(ssl, "OP_NO_TLSv1_1", 0)
     try:
         ssl_ctx.load_cert_chain(
             certfile=str(tls_certs.server_cert_pem_path),
