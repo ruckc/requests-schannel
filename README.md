@@ -197,6 +197,42 @@ session = create_session(
 )
 ```
 
+### Window Handle (`hwnd`) for UI Dialogs
+
+When a client certificate requires user interaction (e.g. smartcard PIN prompt or certificate selection dialog), Windows shows a security dialog. By default this dialog may appear **behind** the application window. Pass a parent window handle (`hwnd`) to ensure it appears on top:
+
+```python
+import ctypes
+
+# Get the foreground window handle
+hwnd = ctypes.windll.user32.GetForegroundWindow()
+
+session = create_session(
+    client_cert_thumbprint="AB12CD34EF56...",
+    hwnd=hwnd,
+)
+```
+
+With a tkinter application:
+
+```python
+import tkinter as tk
+app = tk.Tk()
+
+session = create_session(
+    client_cert_thumbprint="AB12CD34EF56...",
+    hwnd=app.winfo_id(),
+)
+```
+
+Or directly on the context:
+
+```python
+ctx = SchannelContext()
+ctx.client_cert_thumbprint = "AB12CD34EF56..."
+ctx.hwnd = ctypes.windll.user32.GetForegroundWindow()
+```
+
 ### WebSocket mTLS
 
 ```python
@@ -243,6 +279,7 @@ SchannelAdapter(
     alpn_protocols: list[str] | None = None,
     backend: str | None = None,
     schannel_context: SchannelContext | None = None,
+    hwnd: int | None = None,
     **kwargs,  # passed to HTTPAdapter
 )
 ```
@@ -262,6 +299,7 @@ create_session(
     cert_store_name: str = "MY",
     alpn_protocols: list[str] | None = None,
     backend: str | None = None,
+    hwnd: int | None = None,
     **kwargs,
 ) -> requests.Session
 ```
@@ -279,6 +317,7 @@ SchannelContext(backend: str | SchannelBackend | None = None)
 - `client_cert_subject` — subject name substring for client cert selection
 - `auto_select_client_cert` — let Windows auto-select a client cert
 - `cert_store_name` — Windows certificate store name (default `"MY"`)
+- `hwnd` — parent window handle (HWND) for Windows Security dialogs so they appear on top of the application window
 - `minimum_version` / `maximum_version` — `TlsVersion.TLSv1_2` or `TlsVersion.TLSv1_3`
 - `verify_mode` — `ssl.CERT_REQUIRED` (default) or `ssl.CERT_NONE`
 - `check_hostname` — enable/disable hostname verification

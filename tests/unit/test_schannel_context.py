@@ -93,6 +93,39 @@ class TestCertificateConfig:
         ctx.cert_store_name = "ROOT"
         assert ctx.cert_store_name == "ROOT"
 
+    def test_hwnd_default_none(self, mock_backend: MagicMock) -> None:
+        ctx = SchannelContext(backend=mock_backend)
+        assert ctx.hwnd is None
+
+    def test_set_hwnd(self, mock_backend: MagicMock) -> None:
+        ctx = SchannelContext(backend=mock_backend)
+        ctx.hwnd = 12345
+        assert ctx.hwnd == 12345
+
+    def test_hwnd_invalidates_credential(self, mock_backend: MagicMock) -> None:
+        ctx = SchannelContext(backend=mock_backend)
+        ctx._credential = CredentialHandle(handle="old")
+        ctx.hwnd = 12345
+        assert ctx._credential is None
+
+    def test_hwnd_none_clears_value(self, mock_backend: MagicMock) -> None:
+        ctx = SchannelContext(backend=mock_backend)
+        ctx.hwnd = 12345
+        ctx.hwnd = None
+        assert ctx.hwnd is None
+
+    def test_hwnd_passed_to_credential_config(self, mock_backend: MagicMock) -> None:
+        """hwnd value must be forwarded to CredentialConfig when acquiring credentials."""
+        ctx = SchannelContext(backend=mock_backend)
+        ctx.hwnd = 99999
+
+        with patch("requests_schannel.context.get_cert_store"):
+            ctx._get_or_create_credential()
+
+        call_args = mock_backend.acquire_credentials.call_args
+        config = call_args.args[0]
+        assert config.hwnd == 99999
+
 
 @pytest.mark.unit
 class TestAlpn:

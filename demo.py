@@ -23,7 +23,9 @@ class DemoApp(tk.Tk):
         self.minsize(600, 400)
 
         self._session = requests.Session()
-        self._session.mount("https://", SchannelAdapter())
+        # Pass the window handle so that any Windows Security dialogs
+        # (certificate selection, smartcard PIN prompt) appear on top.
+        self._session.mount("https://", SchannelAdapter(hwnd=self.winfo_id()))
 
         self._build_ui()
 

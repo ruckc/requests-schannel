@@ -64,6 +64,7 @@ class CredentialConfig:
     cert_context: Any = None  # Platform-specific cert handle
     flags: int = c.SCH_CRED_AUTO_CRED_VALIDATION | c.SCH_CRED_REVOCATION_CHECK_CHAIN
     manual_validation: bool = False
+    hwnd: int | None = None  # Parent window handle for UI dialogs (e.g. PIN prompt)
 
     def __post_init__(self) -> None:
         if self.manual_validation:
