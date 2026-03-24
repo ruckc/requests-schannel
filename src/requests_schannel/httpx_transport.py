@@ -42,6 +42,7 @@ except ImportError as exc:
 # Internal helpers — httpcore request/response mapping
 # ---------------------------------------------------------------------------
 
+
 def _to_httpcore_request(request: httpx.Request) -> httpcore.Request:
     """Convert an httpx Request to an httpcore Request."""
     return httpcore.Request(
@@ -90,6 +91,7 @@ class _AsyncResponseStream(httpx.AsyncByteStream):
 # ---------------------------------------------------------------------------
 # Async network backend — runs SChannel TLS in a thread-pool executor
 # ---------------------------------------------------------------------------
+
 
 class _SchannelAsyncStream(httpcore.AsyncNetworkStream):
     """Async network stream wrapping a plain or TLS socket.
@@ -183,9 +185,7 @@ class _SchannelAsyncBackend(httpcore.AsyncNetworkBackend):
 
         def _connect() -> socket.socket:
             source = (local_address, 0) if local_address is not None else None
-            sock = socket.create_connection(
-                (host, port), timeout=timeout, source_address=source
-            )
+            sock = socket.create_connection((host, port), timeout=timeout, source_address=source)
             if socket_options is not None:
                 for opt in socket_options:
                     sock.setsockopt(*opt)
@@ -209,6 +209,7 @@ class _SchannelAsyncBackend(httpcore.AsyncNetworkBackend):
 # ---------------------------------------------------------------------------
 # Context builder (shared by both transports)
 # ---------------------------------------------------------------------------
+
 
 def _build_context(
     schannel_context: SchannelContext | None,
@@ -241,6 +242,7 @@ def _build_context(
 # ---------------------------------------------------------------------------
 # Public API — Transports
 # ---------------------------------------------------------------------------
+
 
 class SchannelTransport(httpx.BaseTransport):
     """httpx sync transport that uses Windows SChannel for TLS.
@@ -417,6 +419,7 @@ class AsyncSchannelTransport(httpx.AsyncBaseTransport):
 # ---------------------------------------------------------------------------
 # Public API — Convenience factories
 # ---------------------------------------------------------------------------
+
 
 def create_httpx_client(
     client_cert_thumbprint: str | None = None,
