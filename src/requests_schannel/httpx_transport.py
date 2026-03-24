@@ -37,6 +37,11 @@ except ImportError as exc:
         "Install with: pip install requests-schannel[httpx]"
     ) from exc
 
+# httpcore's socket option type — union of the three setsockopt() overloads
+_SocketOption = (
+    tuple[int, int, int] | tuple[int, int, bytes | bytearray] | tuple[int, int, None, int]
+)
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers — httpcore request/response mapping
@@ -70,7 +75,7 @@ class _SyncResponseStream(httpx.SyncByteStream):
 
     def close(self) -> None:
         if hasattr(self._stream, "close"):
-            self._stream.close()  # type: ignore[union-attr]
+            self._stream.close()
 
 
 class _AsyncResponseStream(httpx.AsyncByteStream):
@@ -85,7 +90,7 @@ class _AsyncResponseStream(httpx.AsyncByteStream):
 
     async def aclose(self) -> None:
         if hasattr(self._stream, "aclose"):
-            await self._stream.aclose()  # type: ignore[union-attr]
+            await self._stream.aclose()
 
 
 # ---------------------------------------------------------------------------
@@ -139,10 +144,13 @@ class _SchannelAsyncStream(httpcore.AsyncNetworkStream):
         def _handshake() -> socket.socket:
             if timeout is not None:
                 self._sock.settimeout(timeout)
-            return ssl_context.wrap_socket(
-                self._sock,
-                server_hostname=server_hostname,
-                do_handshake_on_connect=True,
+            return typing.cast(
+                socket.socket,
+                ssl_context.wrap_socket(
+                    self._sock,
+                    server_hostname=server_hostname,
+                    do_handshake_on_connect=True,
+                ),
             )
 
         tls_sock = await loop.run_in_executor(None, _handshake)
@@ -179,7 +187,7 @@ class _SchannelAsyncBackend(httpcore.AsyncNetworkBackend):
         port: int,
         timeout: float | None = None,
         local_address: str | None = None,
-        socket_options: typing.Iterable[tuple[int, int, int | bytes]] | None = None,
+        socket_options: typing.Iterable[_SocketOption] | None = None,
     ) -> httpcore.AsyncNetworkStream:
         loop = asyncio.get_running_loop()
 
@@ -198,7 +206,7 @@ class _SchannelAsyncBackend(httpcore.AsyncNetworkBackend):
         self,
         path: str,
         timeout: float | None = None,
-        socket_options: typing.Iterable[tuple[int, int, int | bytes]] | None = None,
+        socket_options: typing.Iterable[_SocketOption] | None = None,
     ) -> httpcore.AsyncNetworkStream:
         raise httpcore.UnsupportedProtocol("Unix sockets are not supported on Windows")
 
@@ -282,7 +290,7 @@ class SchannelTransport(httpx.BaseTransport):
         max_connections: int | None = None,
         max_keepalive_connections: int | None = None,
         keepalive_expiry: float | None = 5.0,
-        socket_options: typing.Iterable[tuple[int, int, int | bytes]] | None = None,
+        socket_options: typing.Iterable[_SocketOption] | None = None,
     ) -> None:
         self._schannel_context = _build_context(
             schannel_context=schannel_context,
@@ -367,7 +375,7 @@ class AsyncSchannelTransport(httpx.AsyncBaseTransport):
         max_connections: int | None = None,
         max_keepalive_connections: int | None = None,
         keepalive_expiry: float | None = 5.0,
-        socket_options: typing.Iterable[tuple[int, int, int | bytes]] | None = None,
+        socket_options: typing.Iterable[_SocketOption] | None = None,
     ) -> None:
         self._schannel_context = _build_context(
             schannel_context=schannel_context,
