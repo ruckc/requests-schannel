@@ -38,7 +38,7 @@ except ImportError as exc:
     ) from exc
 
 # httpcore's socket option type — union of the three setsockopt() overloads
-_SocketOption = (
+type _SocketOption = (
     tuple[int, int, int] | tuple[int, int, bytes | bytearray] | tuple[int, int, None, int]
 )
 
