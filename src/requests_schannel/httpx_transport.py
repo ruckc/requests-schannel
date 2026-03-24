@@ -182,10 +182,10 @@ class _SchannelAsyncBackend(httpcore.AsyncNetworkBackend):
         loop = asyncio.get_running_loop()
 
         def _connect() -> socket.socket:
-            addr = (host, port)
-            sock = socket.create_connection(addr, timeout=timeout)
-            if local_address is not None:
-                sock.bind((local_address, 0))
+            source = (local_address, 0) if local_address is not None else None
+            sock = socket.create_connection(
+                (host, port), timeout=timeout, source_address=source
+            )
             if socket_options is not None:
                 for opt in socket_options:
                     sock.setsockopt(*opt)

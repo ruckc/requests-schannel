@@ -187,7 +187,7 @@ class TestCreateHttpxClient:
 class TestCreateAsyncHttpxClient:
     """Test the convenience create_async_httpx_client factory."""
 
-    def test_creates_async_client(self) -> None:
+    async def test_creates_async_client(self) -> None:
         with patch(_BACKEND_PATCH) as mock_get:
             mock_get.return_value = MagicMock()
             import httpx
@@ -196,8 +196,9 @@ class TestCreateAsyncHttpxClient:
 
             client = create_async_httpx_client()
             assert isinstance(client, httpx.AsyncClient)
+            await client.aclose()
 
-    def test_creates_async_client_with_thumbprint(self) -> None:
+    async def test_creates_async_client_with_thumbprint(self) -> None:
         with patch(_BACKEND_PATCH) as mock_get:
             mock_get.return_value = MagicMock()
             from requests_schannel.httpx_transport import (
@@ -209,6 +210,7 @@ class TestCreateAsyncHttpxClient:
             transport = client._transport
             assert isinstance(transport, AsyncSchannelTransport)
             assert transport.schannel_context.client_cert_thumbprint == "AABB"
+            await client.aclose()
 
 
 @pytest.mark.unit
@@ -306,7 +308,9 @@ class TestSchannelAsyncBackend:
 
             stream = await backend.connect_tcp("example.com", 443, timeout=30.0)
             assert isinstance(stream, _SchannelAsyncStream)
-            mock_connect.assert_called_once_with(("example.com", 443), timeout=30.0)
+            mock_connect.assert_called_once_with(
+                ("example.com", 443), timeout=30.0, source_address=None
+            )
 
     async def test_connect_unix_socket_raises(self) -> None:
         import httpcore
