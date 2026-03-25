@@ -282,7 +282,7 @@ def tls_test_server(tls_certs: TestCerts) -> Generator[tuple[str, int]]:
         def log_message(self, format: str, *args: Any) -> None:
             pass  # Suppress server logs during tests
 
-    server = http.server.HTTPServer(("127.0.0.1", 0), SimpleHandler)
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), SimpleHandler)
     server.socket = ssl_ctx.wrap_socket(server.socket, server_side=True)
     host, port = server.server_address
 

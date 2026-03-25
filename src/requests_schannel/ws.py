@@ -138,8 +138,12 @@ async def schannel_connect(
         finally:
             for t in relay_tasks:
                 t.cancel()
-            # Close both relay ends to unblock executor threads
-            for s in (a_sock, tls_sock):
+            # Close all relay/TLS ends to unblock executor threads
+            for s in (a_sock, b_sock, tls_sock):
+                try:
+                    s.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
                 try:
                     s.close()
                 except OSError:
