@@ -14,6 +14,8 @@ from ._constants import (
     ISC_REQ_TLS_CLIENT,
     ISC_REQ_TLS_CLIENT_MTLS,
     SCH_CRED_AUTO_CRED_VALIDATION,
+    SCH_CRED_IGNORE_NO_REVOCATION_CHECK,
+    SCH_CRED_IGNORE_REVOCATION_OFFLINE,
     SCH_CRED_MANUAL_CRED_VALIDATION,
     SCH_CRED_REVOCATION_CHECK_CHAIN,
     SP_PROT_TLS1_2_CLIENT,
@@ -275,7 +277,11 @@ class SchannelContext:
         cert_context = self._resolve_client_cert()
 
         # Build credential flags
-        flags = SCH_CRED_REVOCATION_CHECK_CHAIN
+        flags = (
+            SCH_CRED_REVOCATION_CHECK_CHAIN
+            | SCH_CRED_IGNORE_NO_REVOCATION_CHECK
+            | SCH_CRED_IGNORE_REVOCATION_OFFLINE
+        )
         if self._verify_mode == ssl.CERT_NONE:
             flags = SCH_CRED_MANUAL_CRED_VALIDATION
         else:

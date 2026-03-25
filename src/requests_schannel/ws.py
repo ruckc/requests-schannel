@@ -83,19 +83,72 @@ async def schannel_connect(
 
         tls_sock = await loop.run_in_executor(None, _connect_tls)
 
+        # SchannelSocket is blocking-only: its recv/send do SChannel
+        # encrypt/decrypt that require full TLS record reads. asyncio's
+        # create_connection() sets sockets non-blocking, which breaks
+        # SChannel's record processing. Bridge with a local socketpair:
+        #   websockets ↔ b_sock ↔ a_sock ↔ (relay via executor) ↔ tls_sock ↔ network
+        a_sock, b_sock = socket.socketpair()
+
+        async def _relay_outbound() -> None:
+            """Forward websockets writes → SChannel encrypt → network."""
+            try:
+                while True:
+                    data = await loop.run_in_executor(None, a_sock.recv, 65536)
+                    if not data:
+                        break
+                    await loop.run_in_executor(None, tls_sock.send, data)
+            except OSError:
+                pass
+
+        async def _relay_inbound() -> None:
+            """Forward network → SChannel decrypt → websockets reads."""
+            try:
+                while True:
+                    data = await loop.run_in_executor(None, tls_sock.recv, 65536)
+                    if not data:
+                        try:
+                            a_sock.shutdown(socket.SHUT_WR)
+                        except OSError:
+                            pass
+                        break
+                    await loop.run_in_executor(None, a_sock.sendall, data)
+            except OSError:
+                pass
+
+        relay_tasks = [
+            asyncio.create_task(_relay_outbound()),
+            asyncio.create_task(_relay_inbound()),
+        ]
+
         # Build the websocket URI with ws:// since TLS is already handled
         ws_uri = f"ws://{host}:{port}{parsed.path or '/'}"
         if parsed.query:
             ws_uri += f"?{parsed.query}"
 
-        # Pass pre-handshaked socket to websockets, skip its TLS
-        async with connect(
-            ws_uri,
-            sock=tls_sock,
-            additional_headers=additional_headers,
-            **ws_kwargs,
-        ) as ws_conn:
-            yield ws_conn
+        try:
+            # Pass the plain b_sock to websockets (asyncio-compatible)
+            async with connect(
+                ws_uri,
+                sock=b_sock,
+                additional_headers=additional_headers,
+                **ws_kwargs,
+            ) as ws_conn:
+                yield ws_conn
+        finally:
+            for t in relay_tasks:
+                t.cancel()
+            # Close all relay/TLS ends to unblock executor threads
+            for s in (a_sock, b_sock, tls_sock):
+                try:
+                    s.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                try:
+                    s.close()
+                except OSError:
+                    pass
+            await asyncio.gather(*relay_tasks, return_exceptions=True)
     else:
         # Plain WS — no TLS, delegate entirely to websockets
         async with connect(
