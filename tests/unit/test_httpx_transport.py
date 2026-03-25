@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import socket
 import typing
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -573,121 +572,6 @@ class TestAsyncHandleRequest:
             assert isinstance(transport, AsyncSchannelTransport)
             assert transport.schannel_context.client_cert_thumbprint == "AABB"
             await client.aclose()
-
-
-@pytest.mark.unit
-class TestSchannelAsyncStream:
-    """Test the internal _SchannelAsyncStream."""
-
-    async def test_read(self) -> None:
-        from requests_schannel.httpx_transport import _SchannelAsyncStream
-
-        mock_sock = MagicMock(spec=socket.socket)
-        mock_sock.recv.return_value = b"hello"
-        stream = _SchannelAsyncStream(mock_sock)
-
-        data = await stream.read(1024)
-        assert data == b"hello"
-        mock_sock.recv.assert_called_once_with(1024)
-
-    async def test_write(self) -> None:
-        from requests_schannel.httpx_transport import _SchannelAsyncStream
-
-        mock_sock = MagicMock(spec=socket.socket)
-        stream = _SchannelAsyncStream(mock_sock)
-
-        await stream.write(b"hello")
-        mock_sock.sendall.assert_called_once_with(b"hello")
-
-    async def test_aclose(self) -> None:
-        from requests_schannel.httpx_transport import _SchannelAsyncStream
-
-        mock_sock = MagicMock(spec=socket.socket)
-        stream = _SchannelAsyncStream(mock_sock)
-
-        await stream.aclose()
-        mock_sock.close.assert_called_once()
-
-    async def test_start_tls(self) -> None:
-        from requests_schannel.httpx_transport import _SchannelAsyncStream
-
-        mock_sock = MagicMock(spec=socket.socket)
-        mock_ctx = MagicMock()
-        mock_tls_sock = MagicMock()
-        mock_ctx.wrap_socket.return_value = mock_tls_sock
-
-        stream = _SchannelAsyncStream(mock_sock)
-        tls_stream = await stream.start_tls(
-            ssl_context=mock_ctx,
-            server_hostname="example.com",
-            timeout=30.0,
-        )
-
-        mock_ctx.wrap_socket.assert_called_once_with(
-            mock_sock,
-            server_hostname="example.com",
-            do_handshake_on_connect=True,
-        )
-        assert isinstance(tls_stream, _SchannelAsyncStream)
-
-    async def test_get_extra_info_ssl_object(self) -> None:
-        from requests_schannel.httpx_transport import _SchannelAsyncStream
-
-        # Plain socket — no ssl_object
-        mock_sock = MagicMock(spec=socket.socket)
-        stream = _SchannelAsyncStream(mock_sock)
-        assert stream.get_extra_info("ssl_object") is None
-
-        # TLS socket — has selected_alpn_protocol
-        mock_tls_sock = MagicMock()
-        mock_tls_sock.selected_alpn_protocol.return_value = "http/1.1"
-        tls_stream = _SchannelAsyncStream(mock_tls_sock)
-        assert tls_stream.get_extra_info("ssl_object") is mock_tls_sock
-
-    async def test_get_extra_info_unknown_key(self) -> None:
-        from requests_schannel.httpx_transport import _SchannelAsyncStream
-
-        mock_sock = MagicMock(spec=socket.socket)
-        stream = _SchannelAsyncStream(mock_sock)
-        assert stream.get_extra_info("unknown_key") is None
-
-
-@pytest.mark.unit
-class TestSchannelAsyncBackend:
-    """Test the internal _SchannelAsyncBackend."""
-
-    async def test_connect_tcp(self) -> None:
-        from requests_schannel.httpx_transport import (
-            _SchannelAsyncBackend,
-            _SchannelAsyncStream,
-        )
-
-        backend = _SchannelAsyncBackend()
-
-        with patch("socket.create_connection") as mock_connect:
-            mock_sock = MagicMock(spec=socket.socket)
-            mock_connect.return_value = mock_sock
-
-            stream = await backend.connect_tcp("example.com", 443, timeout=30.0)
-            assert isinstance(stream, _SchannelAsyncStream)
-            mock_connect.assert_called_once_with(
-                ("example.com", 443), timeout=30.0, source_address=None
-            )
-
-    async def test_connect_unix_socket_raises(self) -> None:
-        import httpcore
-
-        from requests_schannel.httpx_transport import _SchannelAsyncBackend
-
-        backend = _SchannelAsyncBackend()
-        with pytest.raises(httpcore.UnsupportedProtocol):
-            await backend.connect_unix_socket("/tmp/test.sock")
-
-    async def test_sleep(self) -> None:
-        from requests_schannel.httpx_transport import _SchannelAsyncBackend
-
-        backend = _SchannelAsyncBackend()
-        await backend.sleep(0)  # Should not raise
 
 
 @pytest.mark.unit

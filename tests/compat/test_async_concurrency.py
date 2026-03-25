@@ -27,9 +27,9 @@ class TestAsyncConcurrency:
         self, tls_test_server: tuple[str, int]
     ) -> None:
         """Multiple concurrent requests on a single async client."""
-        from requests_schannel.httpx_transport import AsyncSchannelTransport
-
         import httpx
+
+        from requests_schannel.httpx_transport import AsyncSchannelTransport
 
         _, port = tls_test_server
         url = f"https://localhost:{port}/"
@@ -63,9 +63,9 @@ class TestAsyncConcurrency:
         num_requests = 5
 
         async def _do_request() -> int:
-            from requests_schannel.httpx_transport import AsyncSchannelTransport
-
             import httpx
+
+            from requests_schannel.httpx_transport import AsyncSchannelTransport
 
             transport = AsyncSchannelTransport()
             transport.schannel_context.verify_mode = ssl.CERT_NONE

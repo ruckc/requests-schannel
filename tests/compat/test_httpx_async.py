@@ -22,9 +22,9 @@ class TestAsyncHttpxClient:
     @pytest.mark.timeout(30)
     async def test_get_request(self, tls_test_server: tuple[str, int]) -> None:
         """GET request via async httpx + AsyncSchannelTransport."""
-        from requests_schannel.httpx_transport import AsyncSchannelTransport
-
         import httpx
+
+        from requests_schannel.httpx_transport import AsyncSchannelTransport
 
         host, port = tls_test_server
         transport = AsyncSchannelTransport()
@@ -40,9 +40,9 @@ class TestAsyncHttpxClient:
     @pytest.mark.timeout(30)
     async def test_post_request(self, tls_test_server: tuple[str, int]) -> None:
         """POST request with body via async httpx."""
-        from requests_schannel.httpx_transport import AsyncSchannelTransport
-
         import httpx
+
+        from requests_schannel.httpx_transport import AsyncSchannelTransport
 
         host, port = tls_test_server
         transport = AsyncSchannelTransport()
@@ -58,9 +58,9 @@ class TestAsyncHttpxClient:
     @pytest.mark.timeout(30)
     async def test_session_reuse(self, tls_test_server: tuple[str, int]) -> None:
         """Multiple requests on same async client (connection pool)."""
-        from requests_schannel.httpx_transport import AsyncSchannelTransport
-
         import httpx
+
+        from requests_schannel.httpx_transport import AsyncSchannelTransport
 
         host, port = tls_test_server
         transport = AsyncSchannelTransport()
@@ -76,9 +76,9 @@ class TestAsyncHttpxClient:
     @pytest.mark.timeout(30)
     async def test_streaming_response(self, tls_test_server: tuple[str, int]) -> None:
         """Stream a response body via async httpx."""
-        from requests_schannel.httpx_transport import AsyncSchannelTransport
-
         import httpx
+
+        from requests_schannel.httpx_transport import AsyncSchannelTransport
 
         host, port = tls_test_server
         transport = AsyncSchannelTransport()

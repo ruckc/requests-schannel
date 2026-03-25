@@ -7,8 +7,12 @@ from __future__ import annotations
 
 import ssl
 import sys
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from requests_schannel.context import SchannelContext
 
 pytestmark = [
     pytest.mark.compat,
@@ -94,7 +98,7 @@ class TestSchannelConnect:
             assert response == "backend test"
 
     @staticmethod
-    def _no_verify_context() -> "SchannelContext":
+    def _no_verify_context() -> SchannelContext:
         """Create a SchannelContext with CERT_NONE for self-signed certs."""
         from requests_schannel.context import SchannelContext
 

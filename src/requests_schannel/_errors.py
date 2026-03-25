@@ -87,7 +87,9 @@ _SSPI_ERROR_MESSAGES: dict[int, str] = {
     c.SEC_E_ALGORITHM_MISMATCH: "No common TLS algorithm — cipher suite negotiation failed",
     c.SEC_E_TARGET_UNKNOWN: "The target server name is unknown",
     c.SEC_E_WRONG_PRINCIPAL: "The server certificate does not match the expected hostname",
-    c.CRYPT_E_REVOCATION_OFFLINE: "Certificate revocation check failed — the revocation server is offline",
+    c.CRYPT_E_REVOCATION_OFFLINE: (
+        "Certificate revocation check failed — the revocation server is offline"
+    ),
     c.SEC_E_INTERNAL_ERROR: "An internal SChannel error occurred",
     c.SEC_E_INCOMPLETE_MESSAGE: "Incomplete TLS message — need more data from the network",
 }
