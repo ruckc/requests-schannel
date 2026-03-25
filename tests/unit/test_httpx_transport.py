@@ -506,9 +506,7 @@ class TestSchannelAsyncBackend:
             opts = [(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)]
             await backend.connect_tcp("example.com", 443, socket_options=opts)
 
-            mock_sock.setsockopt.assert_called_once_with(
-                socket.IPPROTO_TCP, socket.TCP_NODELAY, 1
-            )
+            mock_sock.setsockopt.assert_called_once_with(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
     async def test_connect_unix_socket_raises(self) -> None:
         from requests_schannel.httpx_transport import _SchannelAsyncBackend
@@ -523,7 +521,9 @@ class TestSchannelAsyncBackend:
 
         backend = _SchannelAsyncBackend()
 
-        with patch("requests_schannel.httpx_transport.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        with patch(
+            "requests_schannel.httpx_transport.asyncio.sleep", new_callable=AsyncMock
+        ) as mock_sleep:
             await backend.sleep(0.5)
             mock_sleep.assert_called_once_with(0.5)
 
@@ -557,7 +557,6 @@ class TestAsyncHandleRequest:
 
             assert response.status_code == 200
             transport._pool.handle_async_request.assert_called_once()
-
 
     async def test_creates_async_client_with_thumbprint(self) -> None:
         with patch(_BACKEND_PATCH) as mock_get:

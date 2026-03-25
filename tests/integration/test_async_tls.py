@@ -60,9 +60,7 @@ class TestAsyncTlsHandshake:
             assert version in ("TLSv1.2", "TLSv1.3")
 
     @pytest.mark.timeout(30)
-    async def test_cipher_info(
-        self, tls_test_server: tuple[str, int], backend_name: str
-    ) -> None:
+    async def test_cipher_info(self, tls_test_server: tuple[str, int], backend_name: str) -> None:
         """Verify cipher info is available after async handshake."""
         from requests_schannel.async_socket import AsyncSchannelSocket
         from requests_schannel.context import SchannelContext
@@ -80,9 +78,7 @@ class TestAsyncTlsHandshake:
             assert cipher[2] > 0  # Key strength > 0
 
     @pytest.mark.timeout(30)
-    async def test_send_recv(
-        self, tls_test_server: tuple[str, int], backend_name: str
-    ) -> None:
+    async def test_send_recv(self, tls_test_server: tuple[str, int], backend_name: str) -> None:
         """Send HTTP request and receive response over async TLS."""
         from requests_schannel.async_socket import AsyncSchannelSocket
         from requests_schannel.context import SchannelContext
@@ -110,9 +106,7 @@ class TestAsyncAlpnNegotiation:
     """Test ALPN negotiation via async SChannel."""
 
     @pytest.mark.timeout(30)
-    async def test_alpn_http11(
-        self, tls_test_server: tuple[str, int], backend_name: str
-    ) -> None:
+    async def test_alpn_http11(self, tls_test_server: tuple[str, int], backend_name: str) -> None:
         """Negotiate http/1.1 via ALPN."""
         from requests_schannel.async_socket import AsyncSchannelSocket
         from requests_schannel.context import SchannelContext
@@ -187,9 +181,7 @@ class TestAsyncWrap:
 
         raw_sock = socket.create_connection((host, port), timeout=10)
         try:
-            async with await AsyncSchannelSocket.wrap(
-                raw_sock, ctx, "localhost"
-            ) as sock:
+            async with await AsyncSchannelSocket.wrap(raw_sock, ctx, "localhost") as sock:
                 assert sock.version() is not None
                 request = f"GET / HTTP/1.1\r\nHost: localhost:{port}\r\nConnection: close\r\n\r\n"
                 await sock.send(request.encode())

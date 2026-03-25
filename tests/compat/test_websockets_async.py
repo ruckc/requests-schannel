@@ -24,9 +24,7 @@ class TestSchannelConnect:
     """Test schannel_connect() against a local WSS echo server."""
 
     @pytest.mark.timeout(30)
-    async def test_connect_and_echo(
-        self, wss_echo_server: tuple[str, int]
-    ) -> None:
+    async def test_connect_and_echo(self, wss_echo_server: tuple[str, int]) -> None:
         """Connect to local WSS echo server via schannel_connect, send and receive."""
         from requests_schannel.ws import schannel_connect
 
@@ -41,9 +39,7 @@ class TestSchannelConnect:
             assert response == "hello from async schannel"
 
     @pytest.mark.timeout(30)
-    async def test_multiple_messages(
-        self, wss_echo_server: tuple[str, int]
-    ) -> None:
+    async def test_multiple_messages(self, wss_echo_server: tuple[str, int]) -> None:
         """Send and receive multiple messages on a single connection."""
         from requests_schannel.ws import schannel_connect
 
@@ -60,9 +56,7 @@ class TestSchannelConnect:
                 assert response == msg
 
     @pytest.mark.timeout(30)
-    async def test_binary_message(
-        self, wss_echo_server: tuple[str, int]
-    ) -> None:
+    async def test_binary_message(self, wss_echo_server: tuple[str, int]) -> None:
         """Send and receive binary data."""
         from requests_schannel.ws import schannel_connect
 

@@ -38,17 +38,13 @@ class TestAsyncConcurrency:
         transport = AsyncSchannelTransport()
         transport.schannel_context.verify_mode = ssl.CERT_NONE
 
-        async with httpx.AsyncClient(
-            transport=transport, verify=False
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, verify=False) as client:
 
             async def _do_request() -> int:
                 resp = await client.get(url)
                 return resp.status_code
 
-            results = await asyncio.gather(
-                *[_do_request() for _ in range(num_requests)]
-            )
+            results = await asyncio.gather(*[_do_request() for _ in range(num_requests)])
 
         assert len(results) == num_requests
         assert all(status == 200 for status in results)
@@ -69,15 +65,11 @@ class TestAsyncConcurrency:
 
             transport = AsyncSchannelTransport()
             transport.schannel_context.verify_mode = ssl.CERT_NONE
-            async with httpx.AsyncClient(
-                transport=transport, verify=False
-            ) as client:
+            async with httpx.AsyncClient(transport=transport, verify=False) as client:
                 resp = await client.get(url)
                 return resp.status_code
 
-        results = await asyncio.gather(
-            *[_do_request() for _ in range(num_requests)]
-        )
+        results = await asyncio.gather(*[_do_request() for _ in range(num_requests)])
 
         assert len(results) == num_requests
         assert all(status == 200 for status in results)

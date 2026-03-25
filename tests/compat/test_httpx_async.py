@@ -30,9 +30,7 @@ class TestAsyncHttpxClient:
         transport = AsyncSchannelTransport()
         transport.schannel_context.verify_mode = ssl.CERT_NONE
 
-        async with httpx.AsyncClient(
-            transport=transport, verify=False
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, verify=False) as client:
             resp = await client.get(f"https://localhost:{port}/")
             assert resp.status_code == 200
             assert resp.text == "OK"
@@ -48,9 +46,7 @@ class TestAsyncHttpxClient:
         transport = AsyncSchannelTransport()
         transport.schannel_context.verify_mode = ssl.CERT_NONE
 
-        async with httpx.AsyncClient(
-            transport=transport, verify=False
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, verify=False) as client:
             resp = await client.post(f"https://localhost:{port}/", content=b"hello")
             assert resp.status_code == 200
             assert resp.content == b"hello"
@@ -66,9 +62,7 @@ class TestAsyncHttpxClient:
         transport = AsyncSchannelTransport()
         transport.schannel_context.verify_mode = ssl.CERT_NONE
 
-        async with httpx.AsyncClient(
-            transport=transport, verify=False
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, verify=False) as client:
             for _ in range(3):
                 resp = await client.get(f"https://localhost:{port}/")
                 assert resp.status_code == 200
@@ -84,9 +78,7 @@ class TestAsyncHttpxClient:
         transport = AsyncSchannelTransport()
         transport.schannel_context.verify_mode = ssl.CERT_NONE
 
-        async with httpx.AsyncClient(
-            transport=transport, verify=False
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, verify=False) as client:
             async with client.stream("GET", f"https://localhost:{port}/") as resp:
                 assert resp.status_code == 200
                 body = b""
@@ -99,9 +91,7 @@ class TestCreateAsyncHttpxClientFactory:
     """Test create_async_httpx_client() convenience function."""
 
     @pytest.mark.timeout(30)
-    async def test_create_async_httpx_client(
-        self, tls_test_server: tuple[str, int]
-    ) -> None:
+    async def test_create_async_httpx_client(self, tls_test_server: tuple[str, int]) -> None:
         """Factory returns a working async client."""
         from requests_schannel.httpx_transport import create_async_httpx_client
 

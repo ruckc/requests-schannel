@@ -165,25 +165,19 @@ class TestWrap:
 class TestRecv:
     """Test async receive operations."""
 
-    async def test_recv_returns_decrypted_data(
-        self, mock_schannel_socket: MagicMock
-    ) -> None:
+    async def test_recv_returns_decrypted_data(self, mock_schannel_socket: MagicMock) -> None:
         async_sock = _make_async_socket(mock_schannel_socket)
         mock_schannel_socket.recv.return_value = b"hello world"
         result = await async_sock.recv(4096)
         assert result == b"hello world"
         mock_schannel_socket.recv.assert_called_once_with(4096)
 
-    async def test_recv_default_bufsize(
-        self, mock_schannel_socket: MagicMock
-    ) -> None:
+    async def test_recv_default_bufsize(self, mock_schannel_socket: MagicMock) -> None:
         async_sock = _make_async_socket(mock_schannel_socket)
         await async_sock.recv()
         mock_schannel_socket.recv.assert_called_once_with(4096)
 
-    async def test_recv_eof(
-        self, mock_schannel_socket: MagicMock
-    ) -> None:
+    async def test_recv_eof(self, mock_schannel_socket: MagicMock) -> None:
         async_sock = _make_async_socket(mock_schannel_socket)
         mock_schannel_socket.recv.return_value = b""
         result = await async_sock.recv(4096)
@@ -194,18 +188,14 @@ class TestRecv:
 class TestSend:
     """Test async send operations."""
 
-    async def test_send_data(
-        self, mock_schannel_socket: MagicMock
-    ) -> None:
+    async def test_send_data(self, mock_schannel_socket: MagicMock) -> None:
         async_sock = _make_async_socket(mock_schannel_socket)
         mock_schannel_socket.send.return_value = 5
         result = await async_sock.send(b"hello")
         assert result == 5
         mock_schannel_socket.send.assert_called_once_with(b"hello")
 
-    async def test_send_large_data(
-        self, mock_schannel_socket: MagicMock
-    ) -> None:
+    async def test_send_large_data(self, mock_schannel_socket: MagicMock) -> None:
         async_sock = _make_async_socket(mock_schannel_socket)
         large_data = b"x" * 65536
         mock_schannel_socket.send.return_value = 65536
@@ -217,9 +207,7 @@ class TestSend:
 class TestClose:
     """Test async close operations."""
 
-    async def test_close(
-        self, mock_schannel_socket: MagicMock
-    ) -> None:
+    async def test_close(self, mock_schannel_socket: MagicMock) -> None:
         async_sock = _make_async_socket(mock_schannel_socket)
         await async_sock.close()
         mock_schannel_socket.close.assert_called_once()
@@ -229,59 +217,43 @@ class TestClose:
 class TestMetadata:
     """Test TLS metadata accessors (synchronous delegation)."""
 
-    async def test_selected_alpn_protocol(
-        self, mock_schannel_socket: MagicMock
-    ) -> None:
+    async def test_selected_alpn_protocol(self, mock_schannel_socket: MagicMock) -> None:
         async_sock = _make_async_socket(mock_schannel_socket)
         mock_schannel_socket.selected_alpn_protocol.return_value = "h2"
         assert async_sock.selected_alpn_protocol() == "h2"
 
-    async def test_selected_alpn_protocol_none(
-        self, mock_schannel_socket: MagicMock
-    ) -> None:
+    async def test_selected_alpn_protocol_none(self, mock_schannel_socket: MagicMock) -> None:
         async_sock = _make_async_socket(mock_schannel_socket)
         mock_schannel_socket.selected_alpn_protocol.return_value = None
         assert async_sock.selected_alpn_protocol() is None
 
-    async def test_cipher(
-        self, mock_schannel_socket: MagicMock
-    ) -> None:
+    async def test_cipher(self, mock_schannel_socket: MagicMock) -> None:
         async_sock = _make_async_socket(mock_schannel_socket)
         mock_schannel_socket.cipher.return_value = ("AES256-SHA", "TLSv1.3", 256)
         result = async_sock.cipher()
         assert result == ("AES256-SHA", "TLSv1.3", 256)
 
-    async def test_cipher_none(
-        self, mock_schannel_socket: MagicMock
-    ) -> None:
+    async def test_cipher_none(self, mock_schannel_socket: MagicMock) -> None:
         async_sock = _make_async_socket(mock_schannel_socket)
         mock_schannel_socket.cipher.return_value = None
         assert async_sock.cipher() is None
 
-    async def test_version(
-        self, mock_schannel_socket: MagicMock
-    ) -> None:
+    async def test_version(self, mock_schannel_socket: MagicMock) -> None:
         async_sock = _make_async_socket(mock_schannel_socket)
         mock_schannel_socket.version.return_value = "TLSv1.3"
         assert async_sock.version() == "TLSv1.3"
 
-    async def test_version_none(
-        self, mock_schannel_socket: MagicMock
-    ) -> None:
+    async def test_version_none(self, mock_schannel_socket: MagicMock) -> None:
         async_sock = _make_async_socket(mock_schannel_socket)
         mock_schannel_socket.version.return_value = None
         assert async_sock.version() is None
 
-    async def test_server_hostname(
-        self, mock_schannel_socket: MagicMock
-    ) -> None:
+    async def test_server_hostname(self, mock_schannel_socket: MagicMock) -> None:
         async_sock = _make_async_socket(mock_schannel_socket)
         mock_schannel_socket.server_hostname = "test.example.com"
         assert async_sock.server_hostname == "test.example.com"
 
-    async def test_underlying_socket(
-        self, mock_schannel_socket: MagicMock
-    ) -> None:
+    async def test_underlying_socket(self, mock_schannel_socket: MagicMock) -> None:
         async_sock = _make_async_socket(mock_schannel_socket)
         assert async_sock.underlying_socket is mock_schannel_socket
 
@@ -290,24 +262,18 @@ class TestMetadata:
 class TestContextManager:
     """Test async context manager protocol."""
 
-    async def test_aenter_returns_self(
-        self, mock_schannel_socket: MagicMock
-    ) -> None:
+    async def test_aenter_returns_self(self, mock_schannel_socket: MagicMock) -> None:
         async_sock = _make_async_socket(mock_schannel_socket)
         async with async_sock as sock:
             assert sock is async_sock
 
-    async def test_aexit_calls_close(
-        self, mock_schannel_socket: MagicMock
-    ) -> None:
+    async def test_aexit_calls_close(self, mock_schannel_socket: MagicMock) -> None:
         async_sock = _make_async_socket(mock_schannel_socket)
         async with async_sock:
             pass
         mock_schannel_socket.close.assert_called_once()
 
-    async def test_aexit_calls_close_on_exception(
-        self, mock_schannel_socket: MagicMock
-    ) -> None:
+    async def test_aexit_calls_close_on_exception(self, mock_schannel_socket: MagicMock) -> None:
         async_sock = _make_async_socket(mock_schannel_socket)
         with pytest.raises(RuntimeError):
             async with async_sock:

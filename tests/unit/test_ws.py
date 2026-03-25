@@ -26,7 +26,9 @@ class TestSchannelConnect:
         with (
             patch(_BACKEND_PATCH) as mock_get_backend,
             patch("requests_schannel.ws.socket.create_connection") as mock_conn,
-            patch("requests_schannel.ws.socket.socketpair", return_value=(mock_a_sock, mock_b_sock)),
+            patch(
+                "requests_schannel.ws.socket.socketpair", return_value=(mock_a_sock, mock_b_sock)
+            ),
             patch(_WS_CONNECT_PATCH) as mock_ws_connect,
         ):
             mock_get_backend.return_value = MagicMock()
